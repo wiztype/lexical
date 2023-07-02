@@ -1,5 +1,5 @@
 {
-  "name": "@lexical/code",
+  "name": "@wiztype/code",
   "description": "This package contains the functionality for the code blocks and code highlighting for Lexical.",
   "keywords": [
     "lexical",

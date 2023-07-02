@@ -1,5 +1,5 @@
 {
-  "name": "@lexical/markdown",
+  "name": "@wiztype/markdown",
   "description": "This package contains Markdown helpers and functionality for Lexical.",
   "keywords": [
     "lexical",

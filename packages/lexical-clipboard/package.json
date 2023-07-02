@@ -1,5 +1,5 @@
 {
-  "name": "@lexical/clipboard",
+  "name": "@wiztype/clipboard",
   "description": "This package provides the copy/paste functionality for Lexical.",
   "keywords": [
     "lexical",
