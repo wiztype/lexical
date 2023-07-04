@@ -11,11 +11,13 @@ import type {
   LexicalEditor,
   MutatedNodes,
   MutationListeners,
+  NodeMutation,
   RegisteredNodes,
 } from './LexicalEditor';
 import type {NodeKey, NodeMap} from './LexicalNode';
 import type {ElementNode} from './nodes/LexicalElementNode';
 
+import {flushSync} from 'react-dom';
 import invariant from 'shared/invariant';
 
 import {
@@ -774,6 +776,8 @@ function reconcileNodeChildren(
   }
 }
 
+const useReact = true;
+
 export function reconcileRoot(
   prevEditorState: EditorState,
   nextEditorState: EditorState,
@@ -805,7 +809,13 @@ export function reconcileRoot(
   // listeners later in the update cycle.
   const currentMutatedNodes = new Map();
   mutatedNodes = currentMutatedNodes;
-  reconcileNode('root', null);
+
+  if (useReact) {
+    reconcileRootReact();
+  } else {
+    reconcileNode('root', null);
+  }
+
   // We don't want a bunch of void checks throughout the scope
   // so instead we make it seem that these values are always set.
   // We also want to make sure we clear them down, otherwise we
@@ -855,4 +865,121 @@ function getPrevElementByKeyOrThrow(key: NodeKey): HTMLElement {
   }
 
   return element;
+}
+
+export interface ReconcilingContext {
+  prevNodeMap: NodeMap;
+  nextNodeMap: NodeMap;
+  nextReadOnly: boolean;
+  setMutatedNode(nodeKey: NodeKey, type: NodeMutation): void;
+  reconcileChildren(parentKey: NodeKey, parentDOM: HTMLElement): void;
+}
+
+function reconcileRootReact(): void {
+  if (
+    treatAllNodesAsDirty ||
+    activeDirtyElements.size > 0 ||
+    activeDirtyLeaves.size > 0
+  ) {
+    const _setMutatedNode = (nodeKey: NodeKey, type: NodeMutation) => {
+      if (type === 'destroyed') {
+        const node = activePrevNodeMap.get(nodeKey);
+        if (node !== undefined) {
+          setMutatedNode(
+            mutatedNodes,
+            activeEditor._nodes,
+            activeEditor._listeners.mutation,
+            node,
+            'destroyed',
+          );
+        }
+      } else {
+        const node = activeNextNodeMap.get(nodeKey);
+        if (node === undefined) {
+          invariant(
+            false,
+            'reconcileNode: node(%s) does not exist in nodeMap by %s',
+            nodeKey,
+            type,
+          );
+        }
+        setMutatedNode(
+          mutatedNodes,
+          activeEditor._nodes,
+          activeEditor._listeners.mutation,
+          node,
+          type,
+        );
+      }
+    };
+    const _reconcileChildren = (parentKey: NodeKey, dom: HTMLElement) => {
+      // TODO: Handle editorTextContent correctly.
+      const prevNode = activePrevNodeMap.get(parentKey);
+      const nextNode = activeNextNodeMap.get(parentKey);
+      if (prevNode === undefined && $isElementNode(nextNode)) {
+        const children = createChildrenArray(nextNode, activeNextNodeMap);
+        const endIndex = nextNode.__size - 1;
+        createChildren(children, nextNode, 0, endIndex, dom, null);
+        if (!nextNode.isInline()) {
+          reconcileElementTerminatingLineBreak(null, nextNode, dom);
+        }
+      } else if ($isElementNode(prevNode) && $isElementNode(nextNode)) {
+        reconcileChildren(prevNode, nextNode, dom);
+        if (!$isRootNode(nextNode) && !nextNode.isInline()) {
+          reconcileElementTerminatingLineBreak(prevNode, nextNode, dom);
+        }
+      }
+    };
+    activeEditor._reconcilingContext = {
+      nextNodeMap: activeNextNodeMap,
+      nextReadOnly: activeEditorStateReadOnly,
+      prevNodeMap: activePrevNodeMap,
+      reconcileChildren: _reconcileChildren,
+      setMutatedNode: _setMutatedNode,
+    };
+
+    flushSync(() => {
+      if (treatAllNodesAsDirty) {
+        activeEditor._keyToUpdatersMap.forEach((updaters, nodeKey) => {
+          const prevNode = activePrevNodeMap.get(nodeKey);
+          const nextNode = activeNextNodeMap.get(nodeKey);
+          if (prevNode !== nextNode) {
+            _setMutatedNode(nodeKey, 'updated');
+          }
+          updaters.forEach((updater) => {
+            updater();
+          });
+        });
+      } else {
+        activeDirtyElements.forEach((_, nodeKey) => {
+          const prevNode = activePrevNodeMap.get(nodeKey);
+          const nextNode = activeNextNodeMap.get(nodeKey);
+          if (nextNode !== undefined && prevNode !== nextNode) {
+            _setMutatedNode(nodeKey, 'updated');
+          }
+          const updaters = activeEditor._keyToUpdatersMap.get(nodeKey);
+          if (updaters) {
+            updaters.forEach((updater) => {
+              updater();
+            });
+          }
+        });
+        activeDirtyLeaves.forEach((nodeKey) => {
+          const prevNode = activePrevNodeMap.get(nodeKey);
+          const nextNode = activeNextNodeMap.get(nodeKey);
+          if (nextNode !== undefined && prevNode !== nextNode) {
+            _setMutatedNode(nodeKey, 'updated');
+          }
+          const updaters = activeEditor._keyToUpdatersMap.get(nodeKey);
+          if (updaters) {
+            updaters.forEach((updater) => {
+              updater();
+            });
+          }
+        });
+      }
+    });
+
+    activeEditor._reconcilingContext = null;
+  }
 }

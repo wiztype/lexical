@@ -36,7 +36,7 @@ import {
 } from './LexicalGC';
 import {initMutationObserver} from './LexicalMutations';
 import {$normalizeTextNode} from './LexicalNormalization';
-// import {reconcileRoot} from './LexicalReconciler';
+import {reconcileRoot} from './LexicalReconciler';
 import {
   $isNodeSelection,
   $isRangeSelection,
@@ -54,7 +54,6 @@ import {
   scheduleMicroTask,
   updateDOMBlockCursorElement,
 } from './LexicalUtils';
-import {reconcileRoot as reconcileRootReact} from './WiztypeReconciler';
 
 let activeEditorState: null | EditorState = null;
 let activeEditor: null | LexicalEditor = null;
@@ -475,15 +474,7 @@ export function commitPendingUpdates(
       const dirtyLeaves = editor._dirtyLeaves;
       observer.disconnect();
 
-      // mutatedNodes = reconcileRoot(
-      //   currentEditorState,
-      //   pendingEditorState,
-      //   editor,
-      //   dirtyType,
-      //   dirtyElements,
-      //   dirtyLeaves,
-      // );
-      mutatedNodes = reconcileRootReact(
+      mutatedNodes = reconcileRoot(
         currentEditorState,
         pendingEditorState,
         editor,

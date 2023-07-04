@@ -17,6 +17,7 @@ import {createEmptyEditorState} from './LexicalEditorState';
 import {addRootElementEvents, removeRootElementEvents} from './LexicalEvents';
 import {flushRootMutations, initMutationObserver} from './LexicalMutations';
 import {LexicalNode} from './LexicalNode';
+import {ReconcilingContext} from './LexicalReconciler';
 import {
   commitPendingUpdates,
   internalGetActiveEditor,
@@ -37,7 +38,6 @@ import {LineBreakNode} from './nodes/LexicalLineBreakNode';
 import {ParagraphNode} from './nodes/LexicalParagraphNode';
 import {RootNode} from './nodes/LexicalRootNode';
 import {TabNode} from './nodes/LexicalTabNode';
-import {ReconcilingContext} from './WiztypeReconciler';
 
 export type Spread<T1, T2> = Omit<T2, keyof T1> & T1;
 

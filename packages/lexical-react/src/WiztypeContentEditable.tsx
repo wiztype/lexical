@@ -103,7 +103,7 @@ export function WiztypeContentEditable({
       style={style}
       tabIndex={tabIndex}
       suppressContentEditableWarning={true}>
-      <ChildrenComponent parentKey="root" />
+      <RootComponent />
     </div>
   );
 }
@@ -123,14 +123,14 @@ function getNodeType(node: LexicalNode): 'element' | 'inline-element' | 'text' {
   throw new Error('Unknown node type');
 }
 
-function ChildrenComponent({parentKey}: {parentKey: string}) {
+function RootComponent() {
   const editor = useEditor();
-  const updateKey = useNodeUpdate(editor, parentKey);
+  const updateKey = useNodeUpdate(editor, 'root');
 
   const children = useMemo(() => {
     void updateKey;
     return editor.getEditorState().read(() => {
-      const parent = $getNodeByKey(parentKey);
+      const parent = $getNodeByKey('root');
       if (!$isElementNode(parent)) return [];
       return parent.getChildren().map((child) => {
         return {
@@ -139,7 +139,7 @@ function ChildrenComponent({parentKey}: {parentKey: string}) {
         };
       });
     });
-  }, [editor, parentKey, updateKey]);
+  }, [editor, updateKey]);
 
   return (
     <>
@@ -157,70 +157,9 @@ function ChildrenComponent({parentKey}: {parentKey: string}) {
           );
         }
 
-        return <TextComponent key={child.key} nodeKey={child.key} />;
+        throw new Error('Cannot render text as React');
       })}
     </>
-  );
-}
-
-function TextComponent({nodeKey}: {nodeKey: string}) {
-  const editor = useEditor();
-  const setRef = useNodeDOMSetter(editor, nodeKey);
-  const updateKey = useNodeUpdate(editor, nodeKey);
-  useNodeReconcileMutation(editor, nodeKey);
-
-  const data = useMemo(() => {
-    void updateKey;
-    return editor.getEditorState().read(() => {
-      const node = $getNodeByKey(nodeKey);
-      if (!$isTextNode(node)) return null;
-      return {
-        innerTag: node.getInnerTag(),
-        outerTag: node.getOuterTag(),
-        style: node.getStyle(),
-        text: node.getTextContent(),
-      };
-    });
-  }, [editor, nodeKey, updateKey]);
-
-  const text = data ? data.text : '';
-  const [initialText] = useState(data ? data.text : '');
-
-  const textRef = useRef<HTMLElement | null>(null);
-  const style = data ? data.style : undefined;
-  const setRefWithStyle = useCallback(
-    (elem: HTMLElement | null) => {
-      textRef.current = elem;
-      setRef(elem);
-      if (elem) {
-        elem.style.cssText = style || '';
-      }
-    },
-    [style, setRef],
-  );
-
-  useLayoutEffect(() => {
-    if (!textRef.current) return;
-    if (textRef.current.textContent === text) return;
-    textRef.current.textContent = text;
-  }, [text]);
-
-  if (!data) return null;
-
-  const Outer = data.outerTag as 'span' | null;
-  const Inner = data.innerTag as 'span';
-
-  if (Outer) {
-    return (
-      <Outer data-lexical-text={true} ref={setRefWithStyle}>
-        <Inner>{initialText}</Inner>
-      </Outer>
-    );
-  }
-  return (
-    <Inner data-lexical-text={true} ref={setRefWithStyle}>
-      {initialText}
-    </Inner>
   );
 }
 
@@ -245,17 +184,28 @@ const ElementComponent = memo(function ElementComponentBase(props: {
     });
   }, [editor, nodeKey, updateKey]);
 
-  const setRef = useNodeDOMSetter(editor, nodeKey);
+  const _setRef = useNodeDOMSetter(editor, nodeKey);
+  const ref = useRef<HTMLElement | null>(null);
+  const setRef = useCallback(
+    (elem: HTMLElement | null) => {
+      _setRef(elem);
+      ref.current = elem;
+    },
+    [_setRef],
+  );
+
+  useLayoutEffect(() => {
+    void updateKey;
+    const dom = ref.current;
+    if (!dom || !editor._reconcilingContext) return;
+    editor._reconcilingContext.reconcileChildren(nodeKey, dom);
+  }, [editor, nodeKey, updateKey]);
 
   if (!data) return null;
 
   const Tag = data.tag as 'div';
 
-  return (
-    <Tag ref={setRef} data-key={nodeKey}>
-      <ChildrenComponent parentKey={nodeKey} />
-    </Tag>
-  );
+  return <Tag ref={setRef} className={'PlaygroundEditorTheme__paragraph'} />;
 });
 
 function useNodeDOMSetter(editor: LexicalEditor, nodeKey: string) {
