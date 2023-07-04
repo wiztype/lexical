@@ -156,6 +156,9 @@
       "@lexical/react/LexicalTabIndentationPlugin": [
         "./packages/lexical-react/src/LexicalTabIndentationPlugin.tsx"
       ],
+      "@lexical/react/WiztypeContentEditable": [
+        "./packages/lexical-react/src/WiztypeContentEditable.tsx"
+      ],
 
       "@lexical/dragon/LexicalDragon": ["./packages/lexical-dragon/src/"],
       "@lexical/history/LexicalHistory": ["./packages/lexical-history/src/"],

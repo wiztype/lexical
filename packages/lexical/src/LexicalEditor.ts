@@ -37,6 +37,7 @@ import {LineBreakNode} from './nodes/LexicalLineBreakNode';
 import {ParagraphNode} from './nodes/LexicalParagraphNode';
 import {RootNode} from './nodes/LexicalRootNode';
 import {TabNode} from './nodes/LexicalTabNode';
+import {ReconcilingContext} from './WiztypeReconciler';
 
 export type Spread<T1, T2> = Omit<T2, keyof T1> & T1;
 
@@ -297,7 +298,6 @@ export function resetEditor(
   pendingEditorState: EditorState,
 ): void {
   const keyNodeMap = editor._keyToDOMMap;
-  keyNodeMap.clear();
   editor._editorState = createEmptyEditorState();
   editor._pendingEditorState = pendingEditorState;
   editor._compositionKey = null;
@@ -317,13 +317,7 @@ export function resetEditor(
     editor._observer = null;
   }
 
-  // Remove all the DOM nodes from the root element
-  if (prevRootElement !== null) {
-    prevRootElement.textContent = '';
-  }
-
   if (nextRootElement !== null) {
-    nextRootElement.textContent = '';
     keyNodeMap.set('root', nextRootElement);
   }
 }
@@ -550,6 +544,11 @@ export class LexicalEditor {
   _blockCursorElement: null | HTMLDivElement;
 
   /** @internal */
+  _keyToUpdatersMap: Map<NodeKey, Set<() => void>>;
+  /** @internal */
+  _reconcilingContext: ReconcilingContext | null;
+
+  /** @internal */
   constructor(
     editorState: EditorState,
     parentEditor: null | LexicalEditor,
@@ -609,6 +608,9 @@ export class LexicalEditor {
     this._headless = parentEditor !== null && parentEditor._headless;
     this._window = null;
     this._blockCursorElement = null;
+
+    this._keyToUpdatersMap = new Map();
+    this._reconcilingContext = null;
   }
 
   /**
@@ -941,7 +943,7 @@ export class LexicalEditor {
 
         this._updateTags.add('history-merge');
 
-        commitPendingUpdates(this);
+        // commitPendingUpdates(this);
 
         // TODO: remove this flag once we no longer use UEv2 internally
         if (!this._config.disableEvents) {
