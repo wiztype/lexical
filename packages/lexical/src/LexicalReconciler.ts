@@ -871,6 +871,7 @@ export interface ReconcilingContext {
   prevNodeMap: NodeMap;
   nextNodeMap: NodeMap;
   nextReadOnly: boolean;
+  alreadyMutatedNodes: Set<string>;
   setMutatedNode(nodeKey: NodeKey, type: NodeMutation): void;
   reconcileChildren(parentKey: NodeKey, parentDOM: HTMLElement): void;
 }
@@ -923,6 +924,10 @@ function reconcileRootReact(): void {
         if (!nextNode.isInline()) {
           reconcileElementTerminatingLineBreak(null, nextNode, dom);
         }
+      } else if ($isElementNode(prevNode) && nextNode === undefined) {
+        // Destroy all children.
+        const children = createChildrenArray(prevNode, activePrevNodeMap);
+        destroyChildren(children, 0, children.length - 1, null);
       } else if ($isElementNode(prevNode) && $isElementNode(nextNode)) {
         reconcileChildren(prevNode, nextNode, dom);
         if (!$isRootNode(nextNode) && !nextNode.isInline()) {
@@ -931,6 +936,7 @@ function reconcileRootReact(): void {
       }
     };
     activeEditor._reconcilingContext = {
+      alreadyMutatedNodes: new Set(),
       nextNodeMap: activeNextNodeMap,
       nextReadOnly: activeEditorStateReadOnly,
       prevNodeMap: activePrevNodeMap,
@@ -941,22 +947,12 @@ function reconcileRootReact(): void {
     flushSync(() => {
       if (treatAllNodesAsDirty) {
         activeEditor._keyToUpdatersMap.forEach((updaters, nodeKey) => {
-          const prevNode = activePrevNodeMap.get(nodeKey);
-          const nextNode = activeNextNodeMap.get(nodeKey);
-          if (prevNode !== nextNode) {
-            _setMutatedNode(nodeKey, 'updated');
-          }
           updaters.forEach((updater) => {
             updater();
           });
         });
       } else {
         activeDirtyElements.forEach((_, nodeKey) => {
-          const prevNode = activePrevNodeMap.get(nodeKey);
-          const nextNode = activeNextNodeMap.get(nodeKey);
-          if (nextNode !== undefined && prevNode !== nextNode) {
-            _setMutatedNode(nodeKey, 'updated');
-          }
           const updaters = activeEditor._keyToUpdatersMap.get(nodeKey);
           if (updaters) {
             updaters.forEach((updater) => {
@@ -964,19 +960,7 @@ function reconcileRootReact(): void {
             });
           }
         });
-        activeDirtyLeaves.forEach((nodeKey) => {
-          const prevNode = activePrevNodeMap.get(nodeKey);
-          const nextNode = activeNextNodeMap.get(nodeKey);
-          if (nextNode !== undefined && prevNode !== nextNode) {
-            _setMutatedNode(nodeKey, 'updated');
-          }
-          const updaters = activeEditor._keyToUpdatersMap.get(nodeKey);
-          if (updaters) {
-            updaters.forEach((updater) => {
-              updater();
-            });
-          }
-        });
+        // dirtyLeaves are updated from ElementComponent.
       }
     });
 

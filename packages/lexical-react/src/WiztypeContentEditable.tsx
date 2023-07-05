@@ -7,6 +7,7 @@
  */
 
 import {useLexicalComposerContext} from '@lexical/react/LexicalComposerContext';
+import {mergeRegister} from '@lexical/utils';
 import {
   $getNodeByKey,
   $isElementNode,
@@ -14,6 +15,9 @@ import {
   LexicalEditor,
   LexicalNode,
   NodeKey,
+  ParagraphNode,
+  RootNode,
+  TextNode,
 } from 'lexical';
 import * as React from 'react';
 import {memo, useCallback, useMemo, useRef, useState} from 'react';
@@ -72,6 +76,8 @@ export function WiztypeContentEditable({
     });
   }, [editor]);
 
+  useDebugMutations(editor);
+
   return (
     <div
       {...rest}
@@ -108,6 +114,25 @@ export function WiztypeContentEditable({
   );
 }
 
+function useDebugMutations(editor: LexicalEditor) {
+  useLayoutEffect(() => {
+    return mergeRegister(
+      editor.registerMutationListener(RootNode, (mutations) => {
+        // eslint-disable-next-line no-console
+        console.log('RootNode mutations', mutations);
+      }),
+      editor.registerMutationListener(ParagraphNode, (mutations) => {
+        // eslint-disable-next-line no-console
+        console.log('ParagraphNode mutations', mutations);
+      }),
+      editor.registerMutationListener(TextNode, (mutations) => {
+        // eslint-disable-next-line no-console
+        console.log('TextNode mutations', mutations);
+      }),
+    );
+  }, [editor]);
+}
+
 function useEditor() {
   const [editor] = useLexicalComposerContext();
   return editor;
@@ -125,7 +150,7 @@ function getNodeType(node: LexicalNode): 'element' | 'inline-element' | 'text' {
 
 function RootComponent() {
   const editor = useEditor();
-  const updateKey = useNodeUpdate(editor, 'root');
+  const updateKey = useNodeReconcile(editor, 'root');
 
   const children = useMemo(() => {
     void updateKey;
@@ -170,8 +195,7 @@ const ElementComponent = memo(function ElementComponentBase(props: {
   const {nodeKey} = props;
   const editor = useEditor();
 
-  useNodeReconcileMutation(editor, nodeKey);
-  const updateKey = useNodeUpdate(editor, nodeKey);
+  const updateKey = useNodeReconcile(editor, nodeKey);
 
   const data = useMemo(() => {
     void updateKey;
@@ -193,13 +217,6 @@ const ElementComponent = memo(function ElementComponentBase(props: {
     },
     [_setRef],
   );
-
-  useLayoutEffect(() => {
-    void updateKey;
-    const dom = ref.current;
-    if (!dom || !editor._reconcilingContext) return;
-    editor._reconcilingContext.reconcileChildren(nodeKey, dom);
-  }, [editor, nodeKey, updateKey]);
 
   if (!data) return null;
 
@@ -225,8 +242,10 @@ function useNodeDOMSetter(editor: LexicalEditor, nodeKey: string) {
   return setBlockKeyToDOM;
 }
 
-function useNodeUpdate(editor: LexicalEditor, nodeKey: NodeKey) {
+function useNodeReconcile(editor: LexicalEditor, nodeKey: NodeKey) {
+  const isRoot = nodeKey === 'root';
   const [updateKey, setUpdateKey] = useState(0);
+
   useLayoutEffect(() => {
     const handler = () => {
       setUpdateKey((key) => {
@@ -250,19 +269,54 @@ function useNodeUpdate(editor: LexicalEditor, nodeKey: NodeKey) {
     };
   }, [editor, nodeKey]);
 
-  return updateKey;
-}
+  useLayoutEffect(() => {
+    void updateKey;
+    if (editor._reconcilingContext) {
+      const prevNode = editor._reconcilingContext.prevNodeMap.get(nodeKey);
+      const nextNode = editor._reconcilingContext.nextNodeMap.get(nodeKey);
+      // Except created and destroyed mutations
+      if (
+        prevNode !== undefined &&
+        nextNode !== undefined &&
+        prevNode !== nextNode
+      ) {
+        editor._reconcilingContext.setMutatedNode(nodeKey, 'updated');
+      }
 
-function useNodeReconcileMutation(editor: LexicalEditor, nodeKey: NodeKey) {
+      if (!isRoot) {
+        const dom = editor._keyToDOMMap.get(nodeKey);
+        if (
+          dom &&
+          !editor._reconcilingContext.alreadyMutatedNodes.has(nodeKey)
+        ) {
+          editor._reconcilingContext.alreadyMutatedNodes.add(nodeKey);
+          editor._reconcilingContext.reconcileChildren(nodeKey, dom);
+        }
+      }
+    }
+  }, [editor, isRoot, nodeKey, updateKey]);
+
   // Register created and destroyed mutations
   useLayoutEffect(() => {
+    if (isRoot) return;
     if (editor._reconcilingContext) {
       editor._reconcilingContext.setMutatedNode(nodeKey, 'created');
     }
     return () => {
       if (editor._reconcilingContext) {
         editor._reconcilingContext.setMutatedNode(nodeKey, 'destroyed');
+        // Call reconcileChildren to remove all children
+        const dom = editor._keyToDOMMap.get(nodeKey);
+        if (
+          dom &&
+          !editor._reconcilingContext.alreadyMutatedNodes.has(nodeKey)
+        ) {
+          editor._reconcilingContext.alreadyMutatedNodes.add(nodeKey);
+          editor._reconcilingContext.reconcileChildren(nodeKey, dom);
+        }
       }
     };
-  }, [editor, nodeKey]);
+  }, [editor, isRoot, nodeKey]);
+
+  return updateKey;
 }
