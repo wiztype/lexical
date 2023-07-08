@@ -12,6 +12,7 @@ import {
   $getNodeByKey,
   $isElementNode,
   $isTextNode,
+  BlockNode,
   LexicalEditor,
   LexicalNode,
   NodeKey,
@@ -124,6 +125,10 @@ function useDebugMutations(editor: LexicalEditor) {
       editor.registerMutationListener(ParagraphNode, (mutations) => {
         // eslint-disable-next-line no-console
         console.log('ParagraphNode mutations', mutations);
+      }),
+      editor.registerMutationListener(BlockNode, (mutations) => {
+        // eslint-disable-next-line no-console
+        console.log('BlockNode mutations', mutations);
       }),
       editor.registerMutationListener(TextNode, (mutations) => {
         // eslint-disable-next-line no-console
