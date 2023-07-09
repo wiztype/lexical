@@ -16,7 +16,7 @@ import {InitialConfigType} from '@lexical/react/LexicalComposer';
 import {HorizontalRuleNode} from '@lexical/react/LexicalHorizontalRuleNode';
 import {HeadingNode, QuoteNode} from '@lexical/rich-text';
 import {TableCellNode, TableNode, TableRowNode} from '@lexical/table';
-import {BlockNode, ParagraphNode} from 'lexical';
+import {BlockNode, BlockTextNode, ParagraphNode} from 'lexical';
 
 import {CollapsibleContainerNode} from '../plugins/CollapsiblePlugin/CollapsibleContainerNode';
 import {CollapsibleContentNode} from '../plugins/CollapsiblePlugin/CollapsibleContentNode';
@@ -38,10 +38,14 @@ import {YouTubeNode} from './YouTubeNode';
 
 const PlaygroundNodes: NonNullable<InitialConfigType['nodes']> = [
   BlockNode,
+  BlockTextNode,
   {
     replace: ParagraphNode,
     with: (node: ParagraphNode) => {
-      return new BlockNode('paragraph');
+      const block = new BlockNode('paragraph');
+      const text = new BlockTextNode();
+      block.append(text);
+      return block;
     },
   },
   HeadingNode,

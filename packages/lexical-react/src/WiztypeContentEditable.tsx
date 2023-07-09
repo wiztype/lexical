@@ -10,9 +10,12 @@ import {useLexicalComposerContext} from '@lexical/react/LexicalComposerContext';
 import {mergeRegister} from '@lexical/utils';
 import {
   $getNodeByKey,
+  $isBlockNode,
+  $isBlockTextNode,
   $isElementNode,
   $isTextNode,
-  BlockNode,
+  BlockTextNode,
+  ElementNode,
   LexicalEditor,
   LexicalNode,
   NodeKey,
@@ -126,10 +129,10 @@ function useDebugMutations(editor: LexicalEditor) {
         // eslint-disable-next-line no-console
         console.log('ParagraphNode mutations', mutations);
       }),
-      editor.registerMutationListener(BlockNode, (mutations) => {
-        // eslint-disable-next-line no-console
-        console.log('BlockNode mutations', mutations);
-      }),
+      // editor.registerMutationListener(BlockNode, (mutations) => {
+      //   // eslint-disable-next-line no-console
+      //   console.log('BlockNode mutations', mutations);
+      // }),
       editor.registerMutationListener(TextNode, (mutations) => {
         // eslint-disable-next-line no-console
         console.log('TextNode mutations', mutations);
@@ -143,7 +146,12 @@ function useEditor() {
   return editor;
 }
 
-function getNodeType(node: LexicalNode): 'element' | 'inline-element' | 'text' {
+function getNodeType(
+  node: LexicalNode,
+): 'element' | 'inline-element' | 'text' | 'block' {
+  if ($isBlockNode(node)) {
+    return 'block';
+  }
   if ($isElementNode(node)) {
     return node.isInline() ? 'inline-element' : 'element';
   }
@@ -174,6 +182,9 @@ function RootComponent() {
   return (
     <>
       {children.map((child) => {
+        if (child.type === 'block') {
+          return <BlockComponent key={child.key} nodeKey={child.key} />;
+        }
         if (child.type === 'element') {
           return <ElementComponent key={child.key} nodeKey={child.key} />;
         }
@@ -192,6 +203,32 @@ function RootComponent() {
     </>
   );
 }
+
+const BlockComponent = memo(function BlockComponentBase(props: {
+  nodeKey: string;
+}) {
+  const {nodeKey} = props;
+  const editor = useEditor();
+
+  const updateKey = useNodeReconcile(editor, nodeKey);
+
+  const [textNode] = useMemo<[BlockTextNode | null, ElementNode | null]>(() => {
+    void updateKey;
+    return editor.getEditorState().read(() => {
+      const block = $getNodeByKey(nodeKey);
+      if (!$isBlockNode(block)) return [null, null];
+      const firstChild = block.getFirstChild();
+      if ($isBlockTextNode(firstChild)) {
+        return [firstChild, null];
+      }
+      return [null, null];
+    });
+  }, [editor, nodeKey, updateKey]);
+
+  if (!textNode) return null;
+
+  return <ElementComponent nodeKey={textNode.__key} />;
+});
 
 const ElementComponent = memo(function ElementComponentBase(props: {
   nodeKey: string;

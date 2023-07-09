@@ -188,6 +188,9 @@ export {$createTabNode, $isTabNode, TabNode} from './nodes/LexicalTabNode';
 export {$createTextNode, $isTextNode, TextNode} from './nodes/LexicalTextNode';
 export {
   $createBlockNode,
+  $createBlockTextNode,
   $isBlockNode,
+  $isBlockTextNode,
   BlockNode,
+  BlockTextNode,
 } from './nodes/WiztypeBlockNode';

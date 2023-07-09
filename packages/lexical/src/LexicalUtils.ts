@@ -37,7 +37,6 @@ import {
   $createTextNode,
   $getPreviousSelection,
   $getSelection,
-  $isBlockNode,
   $isDecoratorNode,
   $isElementNode,
   $isLineBreakNode,
@@ -266,10 +265,6 @@ function internalMarkParentElementsAsDirty(
 }
 
 export function removeFromParent(node: LexicalNode): void {
-  if ($isElementNode(node) && !node.isInline()) {
-    removeElementFromParent(node);
-    return;
-  }
   const oldParent = node.getParent();
   if (oldParent !== null) {
     const writableNode = node.getWritable();
@@ -316,57 +311,6 @@ export function removeFromParent(node: LexicalNode): void {
       writableNode.__next = null;
     }
     writableParent.__size--;
-    writableNode.__parent = null;
-  }
-}
-
-function removeElementFromParent(node: ElementNode): void {
-  const oldParent = node.getParent();
-  if ($isBlockNode(oldParent)) {
-    const writableNode = node.getWritable();
-    const writableParent = oldParent.getWritable();
-    const prevSibling = node.getPreviousSibling();
-    const nextSibling = node.getNextSibling();
-    // TODO: this function duplicates a bunch of operations, can be simplified.
-    if (prevSibling === null) {
-      if (nextSibling !== null) {
-        const writableNextSibling = nextSibling.getWritable();
-        writableParent.__firstBlock = nextSibling.__key;
-        writableNextSibling.__prev = null;
-      } else {
-        writableParent.__firstBlock = null;
-      }
-    } else {
-      const writablePrevSibling = prevSibling.getWritable();
-      if (nextSibling !== null) {
-        const writableNextSibling = nextSibling.getWritable();
-        writableNextSibling.__prev = writablePrevSibling.__key;
-        writablePrevSibling.__next = writableNextSibling.__key;
-      } else {
-        writablePrevSibling.__next = null;
-      }
-      writableNode.__prev = null;
-    }
-    if (nextSibling === null) {
-      if (prevSibling !== null) {
-        const writablePrevSibling = prevSibling.getWritable();
-        writableParent.__lastBlock = prevSibling.__key;
-        writablePrevSibling.__next = null;
-      } else {
-        writableParent.__lastBlock = null;
-      }
-    } else {
-      const writableNextSibling = nextSibling.getWritable();
-      if (prevSibling !== null) {
-        const writablePrevSibling = prevSibling.getWritable();
-        writablePrevSibling.__next = writableNextSibling.__key;
-        writableNextSibling.__prev = writablePrevSibling.__key;
-      } else {
-        writableNextSibling.__prev = null;
-      }
-      writableNode.__next = null;
-    }
-    writableParent.__blocksSize--;
     writableNode.__parent = null;
   }
 }
