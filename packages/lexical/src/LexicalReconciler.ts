@@ -873,7 +873,9 @@ export interface ReconcilingContext {
   nextReadOnly: boolean;
   alreadyMutatedNodes: Set<string>;
   setMutatedNode(nodeKey: NodeKey, type: NodeMutation): void;
-  reconcileChildren(parentKey: NodeKey, parentDOM: HTMLElement): void;
+  createBlockTextChildren(nodeKey: NodeKey, dom: HTMLElement): void;
+  updateBlockTextChildren(nodeKey: NodeKey, dom: HTMLElement): void;
+  destroyBlockTextChildren(nodeKey: NodeKey, dom: HTMLElement): void;
 }
 
 function reconcileRootReact(): void {
@@ -913,35 +915,40 @@ function reconcileRootReact(): void {
         );
       }
     };
-    const _reconcileChildren = (parentKey: NodeKey, dom: HTMLElement) => {
-      // TODO: Handle editorTextContent correctly.
-      const prevNode = activePrevNodeMap.get(parentKey);
-      const nextNode = activeNextNodeMap.get(parentKey);
-      if (prevNode === undefined && $isElementNode(nextNode)) {
-        const children = createChildrenArray(nextNode, activeNextNodeMap);
-        const endIndex = nextNode.__size - 1;
-        createChildren(children, nextNode, 0, endIndex, dom, null);
-        if (!nextNode.isInline()) {
-          reconcileElementTerminatingLineBreak(null, nextNode, dom);
-        }
-      } else if ($isElementNode(prevNode) && nextNode === undefined) {
-        // Destroy all children.
-        const children = createChildrenArray(prevNode, activePrevNodeMap);
-        destroyChildren(children, 0, children.length - 1, null);
-      } else if ($isElementNode(prevNode) && $isElementNode(nextNode)) {
-        reconcileChildren(prevNode, nextNode, dom);
-        if (!$isRootNode(nextNode) && !nextNode.isInline()) {
-          reconcileElementTerminatingLineBreak(prevNode, nextNode, dom);
-        }
+    const createBlockTextChildren = (nodeKey: NodeKey, dom: HTMLElement) => {
+      const nextNode = activeNextNodeMap.get(nodeKey);
+      if (!$isElementNode(nextNode)) return;
+      const children = createChildrenArray(nextNode, activeNextNodeMap);
+      const endIndex = nextNode.__size - 1;
+      createChildren(children, nextNode, 0, endIndex, dom, null);
+      if (!nextNode.isInline()) {
+        reconcileElementTerminatingLineBreak(null, nextNode, dom);
       }
+    };
+    const updateBlockTextChildren = (nodeKey: NodeKey, dom: HTMLElement) => {
+      const prevNode = activePrevNodeMap.get(nodeKey);
+      const nextNode = activeNextNodeMap.get(nodeKey);
+      if (!$isElementNode(prevNode) || !$isElementNode(nextNode)) return;
+      reconcileChildren(prevNode, nextNode, dom);
+      if (!$isRootNode(nextNode) && !nextNode.isInline()) {
+        reconcileElementTerminatingLineBreak(prevNode, nextNode, dom);
+      }
+    };
+    const destroyBlockTextChildren = (nodeKey: NodeKey, dom: HTMLElement) => {
+      const prevNode = activePrevNodeMap.get(nodeKey);
+      if (!$isElementNode(prevNode)) return;
+      const children = createChildrenArray(prevNode, activePrevNodeMap);
+      destroyChildren(children, 0, children.length - 1, null);
     };
     activeEditor._reconcilingContext = {
       alreadyMutatedNodes: new Set(),
+      createBlockTextChildren,
+      destroyBlockTextChildren,
       nextNodeMap: activeNextNodeMap,
       nextReadOnly: activeEditorStateReadOnly,
       prevNodeMap: activePrevNodeMap,
-      reconcileChildren: _reconcileChildren,
       setMutatedNode: _setMutatedNode,
+      updateBlockTextChildren,
     };
 
     flushSync(() => {

@@ -7,24 +7,33 @@
  */
 
 import {useLexicalComposerContext} from '@lexical/react/LexicalComposerContext';
-import {mergeRegister} from '@lexical/utils';
+import {$findMatchingParent, mergeRegister} from '@lexical/utils';
 import {
   $getNodeByKey,
+  $getRoot,
+  $getSelection,
   $isBlockNode,
   $isBlockTextNode,
   $isElementNode,
+  $isRangeSelection,
+  $isRootNode,
   $isTextNode,
+  BlockNode,
   BlockTextNode,
+  COMMAND_PRIORITY_EDITOR,
   ElementNode,
+  INDENT_CONTENT_COMMAND,
   LexicalEditor,
   LexicalNode,
   NodeKey,
+  OUTDENT_CONTENT_COMMAND,
   ParagraphNode,
   RootNode,
   TextNode,
 } from 'lexical';
 import * as React from 'react';
-import {memo, useCallback, useMemo, useRef, useState} from 'react';
+import {memo, useCallback, useEffect, useMemo, useState} from 'react';
+import invariant from 'shared/invariant';
 import useLayoutEffect from 'shared/useLayoutEffect';
 
 export type Props = {
@@ -79,6 +88,8 @@ export function WiztypeContentEditable({
       setEditable(currentIsEditable);
     });
   }, [editor]);
+
+  useBlockCommands(editor);
 
   useDebugMutations(editor);
 
@@ -141,6 +152,92 @@ function useDebugMutations(editor: LexicalEditor) {
   }, [editor]);
 }
 
+function $getNearestBlockAncestorOrThrow(startNode: LexicalNode): BlockNode {
+  const blockNode = $findMatchingParent(
+    startNode,
+    (node) => $isBlockNode(node) && !node.isInline(),
+  );
+  if (!$isBlockNode(blockNode)) {
+    invariant(
+      false,
+      'Expected node %s to have closest block node.',
+      startNode.__key,
+    );
+  }
+  return blockNode;
+}
+
+function $getBlockParent(startNode: LexicalNode): ElementNode {
+  const blockNode = $findMatchingParent(
+    startNode,
+    (node) => node.__key !== startNode.__key && $isBlockNode(node),
+  );
+  if (blockNode === null) return $getRoot();
+  if (!$isElementNode(blockNode)) {
+    invariant(false, 'Expected node %s to have parent block', startNode.__key);
+  }
+  return blockNode;
+}
+
+function handleIndentAndOutdent(
+  indentOrOutdent: (block: ElementNode) => void,
+): boolean {
+  const selection = $getSelection();
+  if (!$isRangeSelection(selection)) {
+    return false;
+  }
+  const alreadyHandled = new Set();
+  const nodes = selection.getNodes();
+  for (let i = 0; i < nodes.length; i++) {
+    const node = nodes[i];
+    const key = node.getKey();
+    if (alreadyHandled.has(key)) {
+      continue;
+    }
+    const parentBlock = $getNearestBlockAncestorOrThrow(node);
+    const parentKey = parentBlock.getKey();
+    if (parentBlock.canIndent() && !alreadyHandled.has(parentKey)) {
+      alreadyHandled.add(parentKey);
+      indentOrOutdent(parentBlock);
+    }
+  }
+  return alreadyHandled.size > 0;
+}
+
+function useBlockCommands(editor: LexicalEditor) {
+  useEffect(() => {
+    mergeRegister(
+      editor.registerCommand(
+        INDENT_CONTENT_COMMAND,
+        () => {
+          return handleIndentAndOutdent((node) => {
+            const prevBlock = node.getPreviousSibling();
+            if (!$isBlockNode(prevBlock)) return;
+            const childBlocks = node.getChildBlocks();
+            prevBlock.append(node, ...childBlocks);
+          });
+        },
+        COMMAND_PRIORITY_EDITOR,
+      ),
+      editor.registerCommand(
+        OUTDENT_CONTENT_COMMAND,
+        () => {
+          return handleIndentAndOutdent((node) => {
+            const parentBlock = $getBlockParent(node);
+            if ($isRootNode(parentBlock)) return;
+            const siblings = node.getNextSiblings();
+            if (siblings.length > 0) {
+              node.append(...siblings);
+            }
+            parentBlock.insertAfter(node);
+          });
+        },
+        COMMAND_PRIORITY_EDITOR,
+      ),
+    );
+  });
+}
+
 function useEditor() {
   const [editor] = useLexicalComposerContext();
   return editor;
@@ -163,7 +260,7 @@ function getNodeType(
 
 function RootComponent() {
   const editor = useEditor();
-  const updateKey = useNodeReconcile(editor, 'root');
+  const updateKey = useNodeReconcile(editor, 'root', false);
 
   const children = useMemo(() => {
     void updateKey;
@@ -210,24 +307,36 @@ const BlockComponent = memo(function BlockComponentBase(props: {
   const {nodeKey} = props;
   const editor = useEditor();
 
-  const updateKey = useNodeReconcile(editor, nodeKey);
+  const updateKey = useNodeReconcile(editor, nodeKey, false);
 
-  const [textNode] = useMemo<[BlockTextNode | null, ElementNode | null]>(() => {
+  const [textNode, ...restBlocks] = useMemo<
+    [BlockTextNode | null, ...LexicalNode[]]
+  >(() => {
     void updateKey;
     return editor.getEditorState().read(() => {
       const block = $getNodeByKey(nodeKey);
-      if (!$isBlockNode(block)) return [null, null];
+      if (!$isBlockNode(block)) return [null];
       const firstChild = block.getFirstChild();
+      const childBlocks = block.getChildBlocks();
       if ($isBlockTextNode(firstChild)) {
-        return [firstChild, null];
+        return [firstChild, ...childBlocks];
       }
-      return [null, null];
+      return [null, ...childBlocks];
     });
   }, [editor, nodeKey, updateKey]);
 
-  if (!textNode) return null;
-
-  return <ElementComponent nodeKey={textNode.__key} />;
+  return (
+    <>
+      {textNode && <ElementComponent nodeKey={textNode.__key} />}
+      {restBlocks.length > 0 && (
+        <div style={{marginLeft: '18px'}}>
+          {restBlocks.map((block) => {
+            return <BlockComponent key={block.__key} nodeKey={block.__key} />;
+          })}
+        </div>
+      )}
+    </>
+  );
 });
 
 const ElementComponent = memo(function ElementComponentBase(props: {
@@ -237,7 +346,7 @@ const ElementComponent = memo(function ElementComponentBase(props: {
   const {nodeKey} = props;
   const editor = useEditor();
 
-  const updateKey = useNodeReconcile(editor, nodeKey);
+  const updateKey = useNodeReconcile(editor, nodeKey, true);
 
   const data = useMemo(() => {
     void updateKey;
@@ -250,15 +359,7 @@ const ElementComponent = memo(function ElementComponentBase(props: {
     });
   }, [editor, nodeKey, updateKey]);
 
-  const _setRef = useNodeDOMSetter(editor, nodeKey);
-  const ref = useRef<HTMLElement | null>(null);
-  const setRef = useCallback(
-    (elem: HTMLElement | null) => {
-      _setRef(elem);
-      ref.current = elem;
-    },
-    [_setRef],
-  );
+  const setRef = useNodeDOMSetter(editor, nodeKey);
 
   if (!data) return null;
 
@@ -284,9 +385,14 @@ function useNodeDOMSetter(editor: LexicalEditor, nodeKey: string) {
   return setBlockKeyToDOM;
 }
 
-function useNodeReconcile(editor: LexicalEditor, nodeKey: NodeKey) {
+function useNodeReconcile(
+  editor: LexicalEditor,
+  nodeKey: NodeKey,
+  reconcile: boolean,
+) {
   const isRoot = nodeKey === 'root';
   const [updateKey, setUpdateKey] = useState(0);
+  const cid = useNodeComponentId();
 
   useLayoutEffect(() => {
     const handler = () => {
@@ -312,53 +418,62 @@ function useNodeReconcile(editor: LexicalEditor, nodeKey: NodeKey) {
   }, [editor, nodeKey]);
 
   useLayoutEffect(() => {
-    void updateKey;
+    const initialRender = updateKey === 0;
+    if (initialRender) return;
     if (editor._reconcilingContext) {
       const prevNode = editor._reconcilingContext.prevNodeMap.get(nodeKey);
       const nextNode = editor._reconcilingContext.nextNodeMap.get(nodeKey);
-      // Except created and destroyed mutations
-      if (
-        prevNode !== undefined &&
-        nextNode !== undefined &&
-        prevNode !== nextNode
-      ) {
+      if (prevNode !== nextNode) {
         editor._reconcilingContext.setMutatedNode(nodeKey, 'updated');
       }
-
-      if (!isRoot) {
-        const dom = editor._keyToDOMMap.get(nodeKey);
-        if (
-          dom &&
-          !editor._reconcilingContext.alreadyMutatedNodes.has(nodeKey)
-        ) {
-          editor._reconcilingContext.alreadyMutatedNodes.add(nodeKey);
-          editor._reconcilingContext.reconcileChildren(nodeKey, dom);
-        }
+      const dom = editor._keyToDOMMap.get(nodeKey);
+      if (
+        reconcile &&
+        dom &&
+        !editor._reconcilingContext.alreadyMutatedNodes.has(cid)
+      ) {
+        editor._reconcilingContext.alreadyMutatedNodes.add(cid);
+        editor._reconcilingContext.updateBlockTextChildren(nodeKey, dom);
       }
     }
-  }, [editor, isRoot, nodeKey, updateKey]);
+  }, [editor, reconcile, nodeKey, updateKey, cid]);
 
   // Register created and destroyed mutations
   useLayoutEffect(() => {
     if (isRoot) return;
     if (editor._reconcilingContext) {
       editor._reconcilingContext.setMutatedNode(nodeKey, 'created');
+      const dom = editor._keyToDOMMap.get(nodeKey);
+      if (
+        reconcile &&
+        dom &&
+        !editor._reconcilingContext.alreadyMutatedNodes.has(cid)
+      ) {
+        editor._reconcilingContext.alreadyMutatedNodes.add(cid);
+        editor._reconcilingContext.createBlockTextChildren(nodeKey, dom);
+      }
     }
     return () => {
       if (editor._reconcilingContext) {
         editor._reconcilingContext.setMutatedNode(nodeKey, 'destroyed');
-        // Call reconcileChildren to remove all children
         const dom = editor._keyToDOMMap.get(nodeKey);
         if (
+          reconcile &&
           dom &&
-          !editor._reconcilingContext.alreadyMutatedNodes.has(nodeKey)
+          !editor._reconcilingContext.alreadyMutatedNodes.has(cid)
         ) {
-          editor._reconcilingContext.alreadyMutatedNodes.add(nodeKey);
-          editor._reconcilingContext.reconcileChildren(nodeKey, dom);
+          editor._reconcilingContext.alreadyMutatedNodes.add(cid);
+          editor._reconcilingContext.destroyBlockTextChildren(nodeKey, dom);
         }
       }
     };
-  }, [editor, isRoot, nodeKey]);
+  }, [editor, reconcile, nodeKey, isRoot, cid]);
 
   return updateKey;
+}
+
+function useNodeComponentId() {
+  return useMemo(() => {
+    return Math.floor(Math.random() * 0xffffffff).toString();
+  }, []);
 }

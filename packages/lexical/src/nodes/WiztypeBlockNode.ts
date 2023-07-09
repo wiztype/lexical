@@ -47,6 +47,18 @@ export class BlockNode extends ParagraphNode {
     return self.__blockType;
   }
 
+  getChildBlocks(): LexicalNode[] {
+    const nodes: LexicalNode[] = [];
+    let node = this.getFirstChild();
+    while (node !== null) {
+      if (!$isBlockTextNode(node)) {
+        nodes.push(node);
+      }
+      node = node.getNextSibling();
+    }
+    return nodes;
+  }
+
   // Mutators
 
   setBlockType(blockType: string): this {
