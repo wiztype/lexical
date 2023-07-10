@@ -117,9 +117,9 @@ export class BlockTextNode extends ElementNode {
 
     if ($isBlockTextNode(nodeToInsert)) {
       const newBlock = $createBlockNode();
-      newBlock.append(nodeToInsert);
+      const siblings = this.getNextSiblings();
+      newBlock.append(nodeToInsert, ...siblings);
       block.insertAfter(newBlock, restoreSelection);
-      // TODO: siblings を移動させないといけないかも？
       return newBlock;
     }
 
