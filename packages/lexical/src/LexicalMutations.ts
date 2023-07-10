@@ -28,6 +28,7 @@ import {DOM_TEXT_TYPE} from './LexicalConstants';
 import {updateEditor} from './LexicalUpdates';
 import {
   $getNearestNodeFromDOMNode,
+  $inContentEditableFalse,
   $updateTextNodeFromDOMContent,
   getDOMSelection,
   getNodeFromDOMNode,
@@ -139,6 +140,7 @@ export function $flushMutations(
         const mutation = mutations[i];
         const type = mutation.type;
         const targetDOM = mutation.target;
+        const inContentEditableFalse = $inContentEditableFalse(targetDOM);
         let targetNode = $getNearestNodeFromDOMNode(
           targetDOM,
           currentEditorState,
@@ -146,6 +148,7 @@ export function $flushMutations(
 
         if (
           (targetNode === null && targetDOM !== rootElement) ||
+          inContentEditableFalse ||
           $isDecoratorNode(targetNode)
         ) {
           continue;

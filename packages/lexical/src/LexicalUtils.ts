@@ -418,6 +418,24 @@ export function $getNearestNodeFromDOMNode(
   return null;
 }
 
+export function $inContentEditableFalse(
+  startingDOM: Node,
+  editorState?: EditorState,
+): boolean {
+  let dom: Node | null = startingDOM;
+  while (dom != null) {
+    if (dom instanceof HTMLElement && dom.contentEditable === 'false') {
+      return true;
+    }
+    const node = getNodeFromDOMNode(dom, editorState);
+    if (node !== null) {
+      return false;
+    }
+    dom = getParentElement(dom);
+  }
+  return false;
+}
+
 export function cloneDecorators(
   editor: LexicalEditor,
 ): Record<NodeKey, unknown> {
