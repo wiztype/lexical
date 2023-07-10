@@ -547,6 +547,8 @@ export class LexicalEditor {
   _keyToUpdatersMap: Map<NodeKey, Set<() => void>>;
   /** @internal */
   _reconcilingContext: ReconcilingContext | null;
+  /** @internal */
+  _mutatingIds: Set<string>;
 
   /** @internal */
   constructor(
@@ -611,6 +613,7 @@ export class LexicalEditor {
 
     this._keyToUpdatersMap = new Map();
     this._reconcilingContext = null;
+    this._mutatingIds = new Set();
   }
 
   /**
@@ -1148,4 +1151,39 @@ export class LexicalEditor {
       editorState: this._editorState.toJSON(),
     };
   }
+
+  unlockMutation(lockId: string) {
+    const noLock = this._mutatingIds.size === 0;
+    this._mutatingIds.add(lockId);
+    if (noLock && this._observer !== null) {
+      this._observer.disconnect();
+    }
+  }
+
+  lockMutation(lockId: string) {
+    const prevNoLock = this._mutatingIds.size === 0;
+    this._mutatingIds.delete(lockId);
+    const nextNoLock = this._mutatingIds.size === 0;
+    if (
+      !prevNoLock &&
+      nextNoLock &&
+      this._observer !== null &&
+      this._rootElement !== null
+    ) {
+      this._observer.observe(this._rootElement, observerOptions);
+    }
+  }
+
+  resetMutationLocks() {
+    this._mutatingIds.clear();
+    if (this._observer) {
+      this._observer.disconnect();
+    }
+  }
 }
+
+const observerOptions = {
+  characterData: true,
+  childList: true,
+  subtree: true,
+};

@@ -32,7 +32,14 @@ import {
   TextNode,
 } from 'lexical';
 import * as React from 'react';
-import {memo, useCallback, useEffect, useMemo, useState} from 'react';
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useInsertionEffect,
+  useMemo,
+  useState,
+} from 'react';
 import invariant from 'shared/invariant';
 import useLayoutEffect from 'shared/useLayoutEffect';
 
@@ -262,6 +269,9 @@ function RootComponent() {
   const editor = useEditor();
   const updateKey = useNodeReconcile(editor, 'root', false);
 
+  const cid = useComponentId();
+  useLock(editor, cid);
+
   const children = useMemo(() => {
     void updateKey;
     return editor.getEditorState().read(() => {
@@ -308,6 +318,7 @@ const BlockComponent = memo(function BlockComponentBase(props: {
   const editor = useEditor();
 
   const updateKey = useNodeReconcile(editor, nodeKey, false);
+  const setRef = useNodeDOMSetter(editor, nodeKey);
 
   const [textNode, ...restBlocks] = useMemo<
     [BlockTextNode | null, ...LexicalNode[]]
@@ -325,9 +336,28 @@ const BlockComponent = memo(function BlockComponentBase(props: {
     });
   }, [editor, nodeKey, updateKey]);
 
+  const cid = useComponentId();
+  const [hovered, setHovered] = useState(false);
+  useLock(editor, cid);
+
   return (
-    <>
-      {textNode && <ElementComponent nodeKey={textNode.__key} />}
+    <div ref={setRef} data-block={nodeKey}>
+      <div
+        style={{display: 'flex'}}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}>
+        <div
+          contentEditable={false}
+          style={{
+            userSelect: 'none',
+            width: '1em',
+          }}>
+          {<div>{hovered ? '⭕️' : ''}</div>}
+        </div>
+        <div style={{minWidth: '1em'}}>
+          {textNode && <ElementComponent nodeKey={textNode.__key} />}
+        </div>
+      </div>
       {restBlocks.length > 0 && (
         <div style={{marginLeft: '18px'}}>
           {restBlocks.map((block) => {
@@ -335,7 +365,7 @@ const BlockComponent = memo(function BlockComponentBase(props: {
           })}
         </div>
       )}
-    </>
+    </div>
   );
 });
 
@@ -392,7 +422,7 @@ function useNodeReconcile(
 ) {
   const isRoot = nodeKey === 'root';
   const [updateKey, setUpdateKey] = useState(0);
-  const cid = useNodeComponentId();
+  const cid = useComponentId();
 
   useLayoutEffect(() => {
     const handler = () => {
@@ -472,8 +502,21 @@ function useNodeReconcile(
   return updateKey;
 }
 
-function useNodeComponentId() {
+function useComponentId() {
   return useMemo(() => {
     return Math.floor(Math.random() * 0xffffffff).toString();
   }, []);
+}
+
+function useLock(editor: LexicalEditor, lockId: string) {
+  // DOM の mutation の前に lock する
+  useInsertionEffect(() => {
+    editor.unlockMutation(lockId);
+  });
+
+  useLayoutEffect(() => {
+    return () => {
+      editor.lockMutation(lockId);
+    };
+  });
 }

@@ -320,6 +320,7 @@ export function flushRootMutations(editor: LexicalEditor): void {
 
 export function initMutationObserver(editor: LexicalEditor): void {
   initTextEntryListener(editor);
+  editor.resetMutationLocks();
   editor._observer = new MutationObserver(
     (mutations: Array<MutationRecord>, observer: MutationObserver) => {
       $flushMutations(editor, mutations, observer);
