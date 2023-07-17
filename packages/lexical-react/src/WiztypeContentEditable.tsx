@@ -20,6 +20,7 @@ import {
   $isTextNode,
   BlockNode,
   BlockTextNode,
+  BlockType,
   COMMAND_PRIORITY_EDITOR,
   ElementNode,
   INDENT_CONTENT_COMMAND,
@@ -140,10 +141,10 @@ function useDebugMutations(editor: LexicalEditor) {
         // eslint-disable-next-line no-console
         console.log('ParagraphNode mutations', mutations);
       }),
-      // editor.registerMutationListener(BlockNode, (mutations) => {
-      //   // eslint-disable-next-line no-console
-      //   console.log('BlockNode mutations', mutations);
-      // }),
+      editor.registerMutationListener(BlockNode, (mutations) => {
+        // eslint-disable-next-line no-console
+        console.log('BlockNode mutations', mutations);
+      }),
       editor.registerMutationListener(TextNode, (mutations) => {
         // eslint-disable-next-line no-console
         console.log('TextNode mutations', mutations);
@@ -333,6 +334,14 @@ const BlockComponent = memo(function BlockComponentBase(props: {
   const updateKey = useNodeReconcile(editor, nodeKey, false);
   const setRef = useNodeDOMSetter(editor, nodeKey);
 
+  const blockType = useMemo(() => {
+    void updateKey;
+    return editor.getEditorState().read(() => {
+      const block = $getNodeByKey(nodeKey);
+      if ($isBlockNode(block)) return block.getBlockType();
+    });
+  }, [editor, nodeKey, updateKey]);
+
   const [textNode, ...restBlocks] = useMemo<
     [BlockTextNode | null, ...LexicalNode[]]
   >(() => {
@@ -350,8 +359,22 @@ const BlockComponent = memo(function BlockComponentBase(props: {
   }, [editor, nodeKey, updateKey]);
 
   const cid = useComponentId();
-  const [hovered, setHovered] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [_hovered, setHovered] = useState(false);
   useLock(editor, cid);
+
+  const prefix = (() => {
+    if (blockType === 'bulleted_list_item') {
+      return '・';
+    }
+    if (blockType === 'numbered_list_item') {
+      return '1.';
+    }
+    if (blockType === 'to_do') {
+      return '[]';
+    }
+    return null;
+  })();
 
   return (
     <div ref={setRef} data-block={nodeKey}>
@@ -365,10 +388,16 @@ const BlockComponent = memo(function BlockComponentBase(props: {
             userSelect: 'none',
             width: '1em',
           }}>
-          {<div>{hovered ? '⭕️' : ''}</div>}
+          {<div>{prefix ? prefix : ''}</div>}
         </div>
         <div style={{minWidth: '1em'}}>
-          {textNode && <ElementComponent nodeKey={textNode.__key} />}
+          {textNode && blockType && (
+            <BlockTextComponent
+              key={`${textNode.__key}__${blockType}`}
+              nodeKey={textNode.__key}
+              blockType={blockType}
+            />
+          )}
         </div>
       </div>
       {restBlocks.length > 0 && (
@@ -381,6 +410,67 @@ const BlockComponent = memo(function BlockComponentBase(props: {
     </div>
   );
 });
+
+const BlockTextComponent = memo(function BlockTextComponentBase(props: {
+  nodeKey: string;
+  blockType: BlockType;
+}) {
+  const {nodeKey} = props;
+  const editor = useEditor();
+
+  const updateKey = useNodeReconcile(editor, nodeKey, true);
+
+  const data = useMemo(() => {
+    void updateKey;
+    return editor.getEditorState().read(() => {
+      const element = $getNodeByKey(nodeKey);
+      if (!$isBlockTextNode(element)) return null;
+      return {
+        tag: 'p',
+      };
+    });
+  }, [editor, nodeKey, updateKey]);
+
+  const setRef = useNodeDOMSetter(editor, nodeKey);
+
+  if (!data) return null;
+
+  // TODO: Use dynamic tag
+  const Tag = blockTypeToTag(props.blockType);
+
+  return <Tag ref={setRef} className={'PlaygroundEditorTheme__paragraph'} />;
+});
+
+function blockTypeToTag(blockType: BlockType) {
+  switch (blockType) {
+    case 'paragraph':
+      return 'p';
+    case 'h1':
+      return 'h1';
+    case 'h2':
+      return 'h2';
+    case 'h3':
+      return 'h3';
+    // case 'heading-four':
+    //   return 'h4';
+    // case 'heading-five':
+    //   return 'h5';
+    // case 'heading-six':
+    //   return 'h6';
+    // case 'code-block':
+    //   return 'pre';
+    // case 'blockquote':
+    //   return 'blockquote';
+    // case 'unordered-list':
+    //   return 'ul';
+    // case 'ordered-list':
+    //   return 'ol';
+    // case 'list-item':
+    // return 'li';
+    default:
+      return 'div';
+  }
+}
 
 const ElementComponent = memo(function ElementComponentBase(props: {
   nodeKey: string;

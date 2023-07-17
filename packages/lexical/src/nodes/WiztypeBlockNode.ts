@@ -16,9 +16,30 @@ import invariant from 'shared/invariant';
 import {LexicalNode, NodeKey} from '../LexicalNode';
 import {ElementNode} from './LexicalElementNode';
 
+const blockTypes = [
+  'paragraph',
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
+  'bulleted_list_item',
+  'numbered_list_item',
+  'to_do',
+] as const;
+const blockTypeSet = new Set(blockTypes);
+const defaultBlockType = 'paragraph';
+
+export type BlockType = typeof blockTypes[number];
+
+const isBlockType = (blockType: string): blockType is BlockType => {
+  return blockTypeSet.has(blockType as BlockType);
+};
+
 export class BlockNode extends ParagraphNode {
   /** @internal */
-  __blockType: string;
+  __blockType: BlockType;
 
   static getType(): string {
     return 'block';
@@ -28,7 +49,7 @@ export class BlockNode extends ParagraphNode {
     return new BlockNode(node.__blockType, node.__key);
   }
 
-  constructor(blockType: string, key?: NodeKey) {
+  constructor(blockType: BlockType = defaultBlockType, key?: NodeKey) {
     super(key);
     this.__blockType = blockType;
   }
@@ -47,7 +68,7 @@ export class BlockNode extends ParagraphNode {
     return false;
   }
 
-  getBlockType(): string {
+  getBlockType(): BlockType {
     const self = this.getLatest();
     return self.__blockType;
   }
@@ -66,8 +87,9 @@ export class BlockNode extends ParagraphNode {
 
   // Mutators
 
-  setBlockType(blockType: string): this {
-    const self = this.getLatest();
+  setBlockType(blockType: BlockType): this {
+    invariant(isBlockType(blockType), 'Invalid block type: %s', blockType);
+    const self = this.getWritable();
     self.__blockType = blockType;
     return self;
   }
@@ -79,7 +101,7 @@ export class BlockNode extends ParagraphNode {
   }
 }
 
-export function $createBlockNode(blockType = 'paragraph') {
+export function $createBlockNode(blockType: BlockType = defaultBlockType) {
   return new BlockNode(blockType);
 }
 

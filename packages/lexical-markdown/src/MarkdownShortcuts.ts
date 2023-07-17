@@ -18,6 +18,7 @@ import {$isCodeNode} from '@lexical/code';
 import {
   $createRangeSelection,
   $getSelection,
+  $isBlockNode,
   $isLineBreakNode,
   $isRangeSelection,
   $isRootOrShadowRoot,
@@ -38,7 +39,7 @@ function runElementTransformers(
   const grandParentNode = parentNode.getParent();
 
   if (
-    !$isRootOrShadowRoot(grandParentNode) ||
+    !($isRootOrShadowRoot(grandParentNode) || $isBlockNode(grandParentNode)) ||
     parentNode.getFirstChild() !== anchorNode
   ) {
     return false;
