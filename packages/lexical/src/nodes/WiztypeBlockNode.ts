@@ -5,7 +5,12 @@
  * LICENSE file in the root directory of this source tree.
  *
  */
-import {ParagraphNode, RangeSelection} from 'lexical';
+import {
+  EditorConfig,
+  LexicalEditor,
+  ParagraphNode,
+  RangeSelection,
+} from 'lexical';
 import invariant from 'shared/invariant';
 
 import {LexicalNode, NodeKey} from '../LexicalNode';
@@ -65,6 +70,12 @@ export class BlockNode extends ParagraphNode {
     const self = this.getLatest();
     self.__blockType = blockType;
     return self;
+  }
+
+  createDOM() {
+    const dom = document.createElement('div');
+    dom.setAttribute('data-block-type', this.getBlockType());
+    return dom;
   }
 }
 
@@ -142,6 +153,10 @@ export class BlockTextNode extends ElementNode {
 
   createParentElementNode(): ElementNode {
     return $createBlockNode();
+  }
+
+  createDOM(_config: EditorConfig, _editor: LexicalEditor): HTMLElement {
+    return document.createElement('p');
   }
 }
 

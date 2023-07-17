@@ -32,14 +32,7 @@ import {
   TextNode,
 } from 'lexical';
 import * as React from 'react';
-import {
-  memo,
-  useCallback,
-  useEffect,
-  useInsertionEffect,
-  useMemo,
-  useState,
-} from 'react';
+import {memo, useCallback, useInsertionEffect, useMemo, useState} from 'react';
 import invariant from 'shared/invariant';
 import useLayoutEffect from 'shared/useLayoutEffect';
 
@@ -96,7 +89,7 @@ export function WiztypeContentEditable({
     });
   }, [editor]);
 
-  useBlockCommands(editor);
+  useBlockSetup(editor);
 
   useDebugMutations(editor);
 
@@ -211,38 +204,58 @@ function handleIndentAndOutdent(
   return alreadyHandled.size > 0;
 }
 
-function useBlockCommands(editor: LexicalEditor) {
-  useEffect(() => {
-    mergeRegister(
-      editor.registerCommand(
-        INDENT_CONTENT_COMMAND,
-        () => {
-          return handleIndentAndOutdent((node) => {
-            const prevBlock = node.getPreviousSibling();
-            if (!$isBlockNode(prevBlock)) return;
-            const childBlocks = node.getChildBlocks();
-            prevBlock.append(node, ...childBlocks);
-          });
-        },
-        COMMAND_PRIORITY_EDITOR,
-      ),
-      editor.registerCommand(
-        OUTDENT_CONTENT_COMMAND,
-        () => {
-          return handleIndentAndOutdent((node) => {
-            const parentBlock = $getBlockParent(node);
-            if ($isRootNode(parentBlock)) return;
-            const siblings = node.getNextSiblings();
-            if (siblings.length > 0) {
-              node.append(...siblings);
-            }
-            parentBlock.insertAfter(node);
-          });
-        },
-        COMMAND_PRIORITY_EDITOR,
-      ),
-    );
-  });
+function useBlockSetup(editor: LexicalEditor) {
+  useLayoutEffect(() => {
+    return registerBlock(editor);
+  }, [editor]);
+}
+
+function registerBlock(editor: LexicalEditor) {
+  return mergeRegister(
+    // Block から BlockText が削除されたら、子要素を前の Block に移動する
+    editor.registerNodeTransform(BlockNode, (blockNode) => {
+      const firstChild = blockNode.getFirstChild();
+      if (firstChild && !$isBlockTextNode(firstChild)) {
+        const children = blockNode.getChildren();
+        const prevBlock = blockNode.getPreviousSibling();
+        if ($isBlockNode(prevBlock)) {
+          prevBlock.append(...children);
+          blockNode.remove();
+        } else if ($isElementNode(prevBlock)) {
+          const index = blockNode.getIndexWithinParent();
+          const parent = blockNode.getParentOrThrow();
+          parent.splice(index, 1, children);
+        }
+      }
+    }),
+    editor.registerCommand(
+      INDENT_CONTENT_COMMAND,
+      () => {
+        return handleIndentAndOutdent((node) => {
+          const prevBlock = node.getPreviousSibling();
+          if (!$isBlockNode(prevBlock)) return;
+          const childBlocks = node.getChildBlocks();
+          prevBlock.append(node, ...childBlocks);
+        });
+      },
+      COMMAND_PRIORITY_EDITOR,
+    ),
+    editor.registerCommand(
+      OUTDENT_CONTENT_COMMAND,
+      () => {
+        return handleIndentAndOutdent((node) => {
+          const parentBlock = $getBlockParent(node);
+          if ($isRootNode(parentBlock)) return;
+          const siblings = node.getNextSiblings();
+          if (siblings.length > 0) {
+            node.append(...siblings);
+          }
+          parentBlock.insertAfter(node);
+        });
+      },
+      COMMAND_PRIORITY_EDITOR,
+    ),
+  );
 }
 
 function useEditor() {
