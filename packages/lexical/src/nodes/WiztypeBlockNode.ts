@@ -149,7 +149,7 @@ export class BlockTextNode extends ElementNode {
     }
 
     if ($isBlockTextNode(nodeToInsert)) {
-      const newBlock = $createBlockNode();
+      const newBlock = $createBlockNode(getNewBlockType(block));
       const siblings = this.getNextSiblings();
       newBlock.append(nodeToInsert, ...siblings);
       block.insertAfter(newBlock, restoreSelection);
@@ -179,6 +179,17 @@ export class BlockTextNode extends ElementNode {
 
   createDOM(_config: EditorConfig, _editor: LexicalEditor): HTMLElement {
     return document.createElement('p');
+  }
+}
+
+function getNewBlockType(block: BlockNode): BlockType {
+  switch (block.__blockType) {
+    case 'bulleted_list_item':
+    case 'numbered_list_item':
+    case 'to_do':
+      return block.__blockType;
+    default:
+      return defaultBlockType;
   }
 }
 
