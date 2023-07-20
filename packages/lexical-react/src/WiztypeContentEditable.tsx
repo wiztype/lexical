@@ -155,10 +155,11 @@ function useDebugMutations(editor: LexicalEditor) {
   }, [editor]);
 }
 
-function $getNearestBlockAncestorOrThrow(startNode: LexicalNode): BlockNode {
-  const blockNode = $findMatchingParent(
-    startNode,
-    (node) => $isBlockNode(node) && !node.isInline(),
+function $getNearestBlockElementAncestorOrThrow(
+  startNode: LexicalNode,
+): BlockNode {
+  const blockNode = $findMatchingParent(startNode, (node) =>
+    $isBlockNode(node),
   );
   if (!$isBlockNode(blockNode)) {
     invariant(
@@ -182,6 +183,19 @@ function $getBlockParent(startNode: LexicalNode): ElementNode {
   return blockNode;
 }
 
+function $getBlockDepth(startNode: LexicalNode): number {
+  let depth = 0;
+  const startBlock = $getNearestBlockElementAncestorOrThrow(startNode);
+  let node = startBlock.getParent();
+  while (node !== null && !$isRootNode(node)) {
+    if ($isBlockNode(node)) {
+      depth++;
+    }
+    node = node.getParent();
+  }
+  return depth;
+}
+
 function handleIndentAndOutdent(
   indent: boolean,
   performIndentOrOutdent: (block: ElementNode) => void,
@@ -195,7 +209,7 @@ function handleIndentAndOutdent(
   const nodesToPerform = nodes
     // BlockNode 自体が含まれているものは除く
     .filter((node) => !$isBlockNode(node))
-    .map((node) => $getNearestBlockAncestorOrThrow(node))
+    .map((node) => $getNearestBlockElementAncestorOrThrow(node))
     .filter((block) => {
       const blockKey = block.getKey();
       if (!block.canIndent() || alreadyHandled.has(blockKey)) {
@@ -205,13 +219,7 @@ function handleIndentAndOutdent(
       return true;
     })
     .map((block) => {
-      let depth = 0;
-      let parent = block.getParent();
-      while (parent !== null && !$isRootNode(parent)) {
-        depth++;
-        parent = parent.getParent();
-      }
-      return [block, depth] as const;
+      return [block, $getBlockDepth(block)] as const;
     })
     .sort((a, b) => {
       // Indent の場合は depth が小さい順に、 Outdent の場合は depth が大きい順にソートする
@@ -270,6 +278,11 @@ function registerBlock(editor: LexicalEditor) {
             block.setBlockType('paragraph');
             event.preventDefault();
             return true;
+          }
+          const depth = $getBlockDepth(block);
+          if (depth !== 0) {
+            event.preventDefault();
+            return editor.dispatchCommand(OUTDENT_CONTENT_COMMAND, undefined);
           }
         }
         return false;
