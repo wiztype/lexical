@@ -164,13 +164,20 @@ export class BlockTextNode extends ElementNode {
     restoreSelection = true,
   ): LexicalNode | null {
     const newElement = $createBlockTextNode();
-    return this.insertAfter(newElement, restoreSelection);
+    this.insertAfter(newElement, restoreSelection);
+    return newElement;
   }
 
   insertBefore(nodeToInsert: LexicalNode): LexicalNode {
     if ($isBlockNode(nodeToInsert)) {
       const parent = this.getParentOrThrow();
       return parent.insertBefore(nodeToInsert);
+    }
+    if ($isBlockTextNode(nodeToInsert)) {
+      const parent = this.getParentOrThrow();
+      invariant($isBlockNode(parent), 'parent is not block node');
+      const blockToInsert = nodeToInsert.getParentOrThrow();
+      return parent.insertBefore(blockToInsert);
     }
 
     return super.insertBefore(nodeToInsert);

@@ -22,8 +22,10 @@ import {
   BlockTextNode,
   BlockType,
   COMMAND_PRIORITY_EDITOR,
+  COMMAND_PRIORITY_LOW,
   ElementNode,
   INDENT_CONTENT_COMMAND,
+  KEY_BACKSPACE_COMMAND,
   LexicalEditor,
   LexicalNode,
   NodeKey,
@@ -181,7 +183,8 @@ function $getBlockParent(startNode: LexicalNode): ElementNode {
 }
 
 function handleIndentAndOutdent(
-  indentOrOutdent: (block: ElementNode) => void,
+  indent: boolean,
+  performIndentOrOutdent: (block: ElementNode) => void,
 ): boolean {
   const selection = $getSelection();
   if (!$isRangeSelection(selection)) {
@@ -189,19 +192,37 @@ function handleIndentAndOutdent(
   }
   const alreadyHandled = new Set();
   const nodes = selection.getNodes();
-  for (let i = 0; i < nodes.length; i++) {
-    const node = nodes[i];
-    const key = node.getKey();
-    if (alreadyHandled.has(key)) {
-      continue;
-    }
-    const parentBlock = $getNearestBlockAncestorOrThrow(node);
-    const parentKey = parentBlock.getKey();
-    if (parentBlock.canIndent() && !alreadyHandled.has(parentKey)) {
-      alreadyHandled.add(parentKey);
-      indentOrOutdent(parentBlock);
-    }
-  }
+  const nodesToPerform = nodes
+    // BlockNode 自体が含まれているものは除く
+    .filter((node) => !$isBlockNode(node))
+    .map((node) => $getNearestBlockAncestorOrThrow(node))
+    .filter((block) => {
+      const blockKey = block.getKey();
+      if (!block.canIndent() || alreadyHandled.has(blockKey)) {
+        return false;
+      }
+      alreadyHandled.add(blockKey);
+      return true;
+    })
+    .map((block) => {
+      let depth = 0;
+      let parent = block.getParent();
+      while (parent !== null && !$isRootNode(parent)) {
+        depth++;
+        parent = parent.getParent();
+      }
+      return [block, depth] as const;
+    })
+    .sort((a, b) => {
+      // Indent の場合は depth が小さい順に、 Outdent の場合は depth が大きい順にソートする
+      return indent ? a[1] - b[1] : b[1] - a[1];
+    })
+    .map(([block]) => block);
+
+  nodesToPerform.forEach((block) => {
+    performIndentOrOutdent(block);
+  });
+
   return alreadyHandled.size > 0;
 }
 
@@ -230,9 +251,35 @@ function registerBlock(editor: LexicalEditor) {
       }
     }),
     editor.registerCommand(
+      KEY_BACKSPACE_COMMAND,
+      (event) => {
+        // block の blockType が paragraph 以外なら、blockType を paragraph に変更する
+        const selection = $getSelection();
+        if (
+          !$isRangeSelection(selection) ||
+          !selection.isCollapsed() ||
+          selection.anchor.offset !== 0
+        ) {
+          return false;
+        }
+        const anchorNode = selection.anchor.getNode();
+        const block = $getBlockParent(anchorNode);
+        if ($isBlockNode(block)) {
+          const blockType = block.getBlockType();
+          if (blockType !== 'paragraph') {
+            block.setBlockType('paragraph');
+            event.preventDefault();
+            return true;
+          }
+        }
+        return false;
+      },
+      COMMAND_PRIORITY_LOW,
+    ),
+    editor.registerCommand(
       INDENT_CONTENT_COMMAND,
       () => {
-        return handleIndentAndOutdent((node) => {
+        return handleIndentAndOutdent(true, (node) => {
           const prevBlock = node.getPreviousSibling();
           if (!$isBlockNode(prevBlock)) return;
           const childBlocks = node.getChildBlocks();
@@ -244,7 +291,7 @@ function registerBlock(editor: LexicalEditor) {
     editor.registerCommand(
       OUTDENT_CONTENT_COMMAND,
       () => {
-        return handleIndentAndOutdent((node) => {
+        return handleIndentAndOutdent(false, (node) => {
           const parentBlock = $getBlockParent(node);
           if ($isRootNode(parentBlock)) return;
           const siblings = node.getNextSiblings();
