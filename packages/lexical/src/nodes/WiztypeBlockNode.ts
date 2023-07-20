@@ -85,6 +85,19 @@ export class BlockNode extends ParagraphNode {
     return nodes;
   }
 
+  isParagraphType(): boolean {
+    return this.getBlockType() === 'paragraph';
+  }
+
+  isListType(): boolean {
+    const blockType = this.getBlockType();
+    return (
+      blockType === 'bulleted_list_item' ||
+      blockType === 'numbered_list_item' ||
+      blockType === 'to_do'
+    );
+  }
+
   // Mutators
 
   setBlockType(blockType: BlockType): this {

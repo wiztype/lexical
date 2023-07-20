@@ -26,6 +26,7 @@ import {
   ElementNode,
   INDENT_CONTENT_COMMAND,
   KEY_BACKSPACE_COMMAND,
+  KEY_ENTER_COMMAND,
   LexicalEditor,
   LexicalNode,
   NodeKey,
@@ -262,6 +263,7 @@ function registerBlock(editor: LexicalEditor) {
       KEY_BACKSPACE_COMMAND,
       (event) => {
         // block の blockType が paragraph 以外なら、blockType を paragraph に変更する
+        // block の depth が 0 以外なら、outdent する
         const selection = $getSelection();
         if (
           !$isRangeSelection(selection) ||
@@ -271,7 +273,7 @@ function registerBlock(editor: LexicalEditor) {
           return false;
         }
         const anchorNode = selection.anchor.getNode();
-        const block = $getBlockParent(anchorNode);
+        const block = $getNearestBlockElementAncestorOrThrow(anchorNode);
         if ($isBlockNode(block)) {
           const blockType = block.getBlockType();
           if (blockType !== 'paragraph') {
@@ -283,6 +285,40 @@ function registerBlock(editor: LexicalEditor) {
           if (depth !== 0) {
             event.preventDefault();
             return editor.dispatchCommand(OUTDENT_CONTENT_COMMAND, undefined);
+          }
+        }
+        return false;
+      },
+      COMMAND_PRIORITY_LOW,
+    ),
+    editor.registerCommand(
+      KEY_ENTER_COMMAND,
+      (event) => {
+        // blockType が list で空行なら、outdent する
+        const selection = $getSelection();
+        if (
+          !$isRangeSelection(selection) ||
+          !selection.isCollapsed() ||
+          selection.anchor.offset !== 0
+        ) {
+          return false;
+        }
+        const anchorNode = selection.anchor.getNode();
+        const block = $getNearestBlockElementAncestorOrThrow(anchorNode);
+        const blockText = block.getFirstChild();
+        if ($isBlockTextNode(blockText) && blockText.getChildrenSize() === 0) {
+          if (block.isListType()) {
+            if (event) {
+              event.preventDefault();
+            }
+            return editor.dispatchCommand(OUTDENT_CONTENT_COMMAND, undefined);
+          }
+          if (!block.isParagraphType()) {
+            if (event) {
+              event.preventDefault();
+            }
+            block.setBlockType('paragraph');
+            return true;
           }
         }
         return false;
