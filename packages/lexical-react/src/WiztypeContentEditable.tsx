@@ -36,7 +36,14 @@ import {
   TextNode,
 } from 'lexical';
 import * as React from 'react';
-import {memo, useCallback, useInsertionEffect, useMemo, useState} from 'react';
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useInsertionEffect,
+  useMemo,
+  useState,
+} from 'react';
 import invariant from 'shared/invariant';
 import useLayoutEffect from 'shared/useLayoutEffect';
 
@@ -97,6 +104,8 @@ export function WiztypeContentEditable({
 
   useDebugMutations(editor);
 
+  useBlockHover(editor);
+
   return (
     <div
       {...rest}
@@ -153,6 +162,40 @@ function useDebugMutations(editor: LexicalEditor) {
         console.log('TextNode mutations', mutations);
       }),
     );
+  }, [editor]);
+}
+
+function useBlockHover(editor: LexicalEditor) {
+  useEffect(() => {
+    // TODO: Enable to specify container from outside.
+    const container = document.body;
+    let x = 0;
+    let y = 0;
+    let requestId = 0;
+    const handleMouseMove = (event: MouseEvent) => {
+      x = event.clientX;
+      y = event.clientY;
+      cancelAnimationFrame(requestId);
+      requestId = requestAnimationFrame(() => {
+        const root = editor.getRootElement();
+        if (!root) return;
+        const rootRect = root.getBoundingClientRect();
+        const offsetX = 100;
+        const targetX = Math.min(x + offsetX, rootRect.right);
+        const targetY = y;
+        const elem = document.elementFromPoint(targetX, targetY);
+        if (!elem || !root.contains(elem)) return;
+        // editor.getEditorState().read(() => {
+        //   const node = $getNearestNodeFromDOMNode(elem);
+        //   console.log(node);
+        // });
+      });
+    };
+    container.addEventListener('mousemove', handleMouseMove, {passive: true});
+    return () => {
+      container.removeEventListener('mousemove', handleMouseMove);
+      cancelAnimationFrame(requestId);
+    };
   }, [editor]);
 }
 
