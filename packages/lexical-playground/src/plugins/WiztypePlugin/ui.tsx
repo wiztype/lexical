@@ -17,7 +17,9 @@ import {
 } from '@lexical/react/WiztypeContentEditable';
 import {BlockType} from 'lexical';
 import * as React from 'react';
-import {memo, useState} from 'react';
+import {memo, useLayoutEffect, useRef, useState} from 'react';
+
+import {useBlockTextHighlights} from './highlight';
 
 export const BlockComponent: BlockComponentType = memo(
   function BlockComponentBase(props) {
@@ -71,17 +73,90 @@ export const BlockComponent: BlockComponentType = memo(
 
 export const BlockTextComponent: BlockTextComponentType = memo(
   function BlockTextComponentBase(props) {
-    const {getBlockTextComponentProps} = useBlockTextComponent(props);
-    const {blockType} = props;
+    const {getBlockTextComponentProps, ref} = useBlockTextComponent(props);
+    const {blockType, nodeKey} = props;
+    const containerRef = useRef<HTMLDivElement | null>(null);
 
-    // TODO: Use dynamic tag
+    const highlights = useBlockTextHighlights(nodeKey);
+    const [highlightRects, setHighlightRects] = useState<
+      Array<{
+        height: number;
+        left: number;
+        top: number;
+        width: number;
+      }>
+    >([]);
+    useLayoutEffect(() => {
+      const elem = ref.current;
+      const container = containerRef.current;
+      if (highlights.length === 0 || !elem || !container) {
+        setHighlightRects([]);
+        return;
+      }
+      const base = elem.getBoundingClientRect();
+      const newHighlightRects = [];
+      for (const highlight of highlights) {
+        const range = document.createRange();
+        let offset = 0;
+        for (const span of elem.childNodes) {
+          const textNode = span.firstChild;
+          const text = textNode?.textContent;
+          if (!textNode || !text) continue;
+          // offset <= highlight.start < offset + text.length なら start に指定する
+          if (
+            highlight.start >= offset &&
+            highlight.start < offset + text.length
+          ) {
+            range.setStart(textNode, highlight.start - offset);
+          }
+          // offset < highlight.end <= offset + text.length なら end に指定する
+          if (highlight.end > offset && highlight.end <= offset + text.length) {
+            range.setEnd(textNode, highlight.end - offset);
+          }
+          offset += text.length;
+        }
+        const rects = range.getClientRects();
+        if (rects.length === 0) continue;
+        for (const rect of rects) {
+          newHighlightRects.push({
+            height: rect.height,
+            left: rect.left - base.left,
+            top: rect.top - base.top,
+            width: rect.width,
+          });
+        }
+      }
+      setHighlightRects(newHighlightRects);
+    }, [highlights, ref]);
+
     const Tag = blockTypeToTag(blockType);
 
     return (
-      <Tag
-        {...getBlockTextComponentProps()}
-        className={'PlaygroundEditorTheme__paragraph'}
-      />
+      <div ref={containerRef} style={{position: 'relative'}}>
+        <Tag
+          {...getBlockTextComponentProps()}
+          className={'PlaygroundEditorTheme__paragraph'}
+        />
+        <div contentEditable={false}>
+          {highlightRects.map((rect, i) => {
+            if (!rect) return null;
+            return (
+              <div
+                key={i}
+                style={{
+                  background: 'red',
+                  height: rect.height,
+                  left: rect.left,
+                  opacity: 0.5,
+                  position: 'absolute',
+                  top: rect.top,
+                  width: rect.width,
+                }}
+              />
+            );
+          })}
+        </div>
+      </div>
     );
   },
 );

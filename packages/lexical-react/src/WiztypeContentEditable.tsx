@@ -43,6 +43,7 @@ import {
   useEffect,
   useInsertionEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import invariant from 'shared/invariant';
@@ -464,7 +465,7 @@ export function useBlockComponent({nodeKey}: BlockComponentProps) {
   const [editor] = useLexicalComposerContext();
 
   const updateKey = useNodeReconcile(editor, nodeKey, false);
-  const setRef = useNodeDOMSetter(editor, nodeKey);
+  const {setRef, ref} = useNodeDOMSetter(editor, nodeKey);
 
   const blockType = useMemo(() => {
     void updateKey;
@@ -531,6 +532,7 @@ export function useBlockComponent({nodeKey}: BlockComponentProps) {
     blockType,
     getBlockComponentProps,
     hasChildBlocks,
+    ref,
     renderBlockText,
     renderChildBlocks,
   };
@@ -543,7 +545,10 @@ export function useBlockTextComponent({
   const [editor] = useLexicalComposerContext();
 
   const updateKey = useNodeReconcile(editor, nodeKey, true);
-  const setRef = useNodeDOMSetter(editor, nodeKey);
+  const {setRef, ref} = useNodeDOMSetter(editor, nodeKey);
+
+  const cid = useComponentId();
+  useLock(editor, cid);
 
   useMemo(() => {
     void updateKey;
@@ -565,6 +570,7 @@ export function useBlockTextComponent({
 
   return {
     getBlockTextComponentProps,
+    ref,
   };
 }
 
@@ -647,7 +653,7 @@ export function useElementComponent({nodeKey}: ElementComponentProps) {
     });
   }, [editor, nodeKey, updateKey]);
 
-  const setRef = useNodeDOMSetter(editor, nodeKey);
+  const {setRef, ref} = useNodeDOMSetter(editor, nodeKey);
 
   const getElementComponentProps = () => {
     return {
@@ -661,12 +667,15 @@ export function useElementComponent({nodeKey}: ElementComponentProps) {
       props: React.ComponentPropsWithRef<'div'>,
     ) => JSX.Element,
     getElementComponentProps,
+    ref,
   };
 }
 
 function useNodeDOMSetter(editor: LexicalEditor, nodeKey: string) {
+  const ref = useRef<HTMLElement | null>(null);
   const setBlockKeyToDOM = useCallback(
     (elem: HTMLElement | null) => {
+      ref.current = elem;
       if (elem) {
         editor._keyToDOMMap.set(nodeKey, elem);
         // @ts-expect-error
@@ -678,7 +687,7 @@ function useNodeDOMSetter(editor: LexicalEditor, nodeKey: string) {
     [editor, nodeKey],
   );
 
-  return setBlockKeyToDOM;
+  return {ref, setRef: setBlockKeyToDOM};
 }
 
 function useNodeReconcile(
