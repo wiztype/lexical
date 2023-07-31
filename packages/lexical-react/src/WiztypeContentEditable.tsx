@@ -37,8 +37,9 @@ import {
 } from 'lexical';
 import * as React from 'react';
 import {
-  memo,
+  createContext,
   useCallback,
+  useContext,
   useEffect,
   useInsertionEffect,
   useMemo,
@@ -47,7 +48,57 @@ import {
 import invariant from 'shared/invariant';
 import useLayoutEffect from 'shared/useLayoutEffect';
 
+type BlockComponentProps = {
+  nodeKey: string;
+};
+export type BlockComponentType = (
+  props: BlockComponentProps,
+) => JSX.Element | null;
+
+type BlockTextComponentProps = {
+  nodeKey: string;
+  blockType: BlockType;
+};
+export type BlockTextComponentType = (
+  props: BlockTextComponentProps,
+) => JSX.Element | null;
+
+type ElementComponentProps = {
+  nodeKey: string;
+  isInline: boolean;
+};
+export type ElementComponentType = (
+  props: ElementComponentProps,
+) => JSX.Element | null;
+
+export type RootComponentType = (
+  props: Record<string, unknown>,
+) => JSX.Element | null;
+
+type InitialConfig = {
+  BlockComponent: BlockComponentType;
+  BlockTextComponent: BlockTextComponentType;
+  ElementComponent: ElementComponentType;
+  RootComponent: RootComponentType;
+};
+
+type RenderConfigContextType = {
+  BlockComponent: BlockComponentType;
+  BlockTextComponent: BlockTextComponentType;
+  ElementComponent: ElementComponentType;
+  RootComponent: RootComponentType;
+};
+
+const RenderConfigContext = createContext<RenderConfigContextType | null>(null);
+
+function useRenderConfig() {
+  const config = useContext(RenderConfigContext);
+  invariant(config != null, 'useRenderConfig must be used within a provider');
+  return config;
+}
+
 export type Props = {
+  initialConfig: InitialConfig;
   ariaActiveDescendant?: React.AriaAttributes['aria-activedescendant'];
   ariaAutoComplete?: React.AriaAttributes['aria-autocomplete'];
   ariaControls?: React.AriaAttributes['aria-controls'];
@@ -63,6 +114,7 @@ export type Props = {
 } & React.AllHTMLAttributes<HTMLDivElement>;
 
 export function WiztypeContentEditable({
+  initialConfig,
   ariaActiveDescendant,
   ariaAutoComplete,
   ariaControls,
@@ -85,6 +137,14 @@ export function WiztypeContentEditable({
 }: Props): JSX.Element {
   const [editor] = useLexicalComposerContext();
   const [isEditable, setEditable] = useState(false);
+  const [renderConfig] = useState(() => {
+    return {
+      BlockComponent: initialConfig.BlockComponent,
+      BlockTextComponent: initialConfig.BlockTextComponent,
+      ElementComponent: initialConfig.ElementComponent,
+      RootComponent: initialConfig.RootComponent,
+    };
+  });
 
   const ref = useCallback(
     (rootElement: null | HTMLElement) => {
@@ -106,39 +166,43 @@ export function WiztypeContentEditable({
 
   useBlockHover(editor);
 
+  const RootComponent = renderConfig.RootComponent;
+
   return (
-    <div
-      {...rest}
-      aria-activedescendant={!isEditable ? undefined : ariaActiveDescendant}
-      aria-autocomplete={!isEditable ? 'none' : ariaAutoComplete}
-      aria-controls={!isEditable ? undefined : ariaControls}
-      aria-describedby={ariaDescribedBy}
-      aria-expanded={
-        !isEditable
-          ? undefined
-          : role === 'combobox'
-          ? !!ariaExpanded
-          : undefined
-      }
-      aria-label={ariaLabel}
-      aria-labelledby={ariaLabelledBy}
-      aria-multiline={ariaMultiline}
-      aria-owns={!isEditable ? undefined : ariaOwns}
-      aria-readonly={!isEditable ? true : undefined}
-      aria-required={ariaRequired}
-      autoCapitalize={autoCapitalize}
-      className={className}
-      contentEditable={isEditable}
-      data-testid={testid}
-      id={id}
-      ref={ref}
-      role={role}
-      spellCheck={spellCheck}
-      style={style}
-      tabIndex={tabIndex}
-      suppressContentEditableWarning={true}>
-      <RootComponent />
-    </div>
+    <RenderConfigContext.Provider value={renderConfig}>
+      <div
+        {...rest}
+        aria-activedescendant={!isEditable ? undefined : ariaActiveDescendant}
+        aria-autocomplete={!isEditable ? 'none' : ariaAutoComplete}
+        aria-controls={!isEditable ? undefined : ariaControls}
+        aria-describedby={ariaDescribedBy}
+        aria-expanded={
+          !isEditable
+            ? undefined
+            : role === 'combobox'
+            ? !!ariaExpanded
+            : undefined
+        }
+        aria-label={ariaLabel}
+        aria-labelledby={ariaLabelledBy}
+        aria-multiline={ariaMultiline}
+        aria-owns={!isEditable ? undefined : ariaOwns}
+        aria-readonly={!isEditable ? true : undefined}
+        aria-required={ariaRequired}
+        autoCapitalize={autoCapitalize}
+        className={className}
+        contentEditable={isEditable}
+        data-testid={testid}
+        id={id}
+        ref={ref}
+        role={role}
+        spellCheck={spellCheck}
+        style={style}
+        tabIndex={tabIndex}
+        suppressContentEditableWarning={true}>
+        <RootComponent />
+      </div>
+    </RenderConfigContext.Provider>
   );
 }
 
@@ -199,9 +263,7 @@ function useBlockHover(editor: LexicalEditor) {
   }, [editor]);
 }
 
-function $getNearestBlockElementAncestorOrThrow(
-  startNode: LexicalNode,
-): BlockNode {
+function $getNearestBlockAncestorOrThrow(startNode: LexicalNode): BlockNode {
   const blockNode = $findMatchingParent(startNode, (node) =>
     $isBlockNode(node),
   );
@@ -229,7 +291,7 @@ function $getBlockParent(startNode: LexicalNode): ElementNode {
 
 function $getBlockDepth(startNode: LexicalNode): number {
   let depth = 0;
-  const startBlock = $getNearestBlockElementAncestorOrThrow(startNode);
+  const startBlock = $getNearestBlockAncestorOrThrow(startNode);
   let node = startBlock.getParent();
   while (node !== null && !$isRootNode(node)) {
     if ($isBlockNode(node)) {
@@ -253,7 +315,7 @@ function handleIndentAndOutdent(
   const nodesToPerform = nodes
     // BlockNode 自体が含まれているものは除く
     .filter((node) => !$isBlockNode(node))
-    .map((node) => $getNearestBlockElementAncestorOrThrow(node))
+    .map((node) => $getNearestBlockAncestorOrThrow(node))
     .filter((block) => {
       const blockKey = block.getKey();
       if (!block.canIndent() || alreadyHandled.has(blockKey)) {
@@ -316,7 +378,7 @@ function registerBlock(editor: LexicalEditor) {
           return false;
         }
         const anchorNode = selection.anchor.getNode();
-        const block = $getNearestBlockElementAncestorOrThrow(anchorNode);
+        const block = $getNearestBlockAncestorOrThrow(anchorNode);
         if ($isBlockNode(block)) {
           const blockType = block.getBlockType();
           if (blockType !== 'paragraph') {
@@ -347,7 +409,7 @@ function registerBlock(editor: LexicalEditor) {
           return false;
         }
         const anchorNode = selection.anchor.getNode();
-        const block = $getNearestBlockElementAncestorOrThrow(anchorNode);
+        const block = $getNearestBlockAncestorOrThrow(anchorNode);
         const blockText = block.getFirstChild();
         if ($isBlockTextNode(blockText) && blockText.getChildrenSize() === 0) {
           if (block.isListType()) {
@@ -398,77 +460,8 @@ function registerBlock(editor: LexicalEditor) {
   );
 }
 
-function useEditor() {
+export function useBlockComponent({nodeKey}: BlockComponentProps) {
   const [editor] = useLexicalComposerContext();
-  return editor;
-}
-
-function getNodeType(
-  node: LexicalNode,
-): 'element' | 'inline-element' | 'text' | 'block' {
-  if ($isBlockNode(node)) {
-    return 'block';
-  }
-  if ($isElementNode(node)) {
-    return node.isInline() ? 'inline-element' : 'element';
-  }
-  if ($isTextNode(node)) {
-    return 'text';
-  }
-  throw new Error('Unknown node type');
-}
-
-function RootComponent() {
-  const editor = useEditor();
-  const updateKey = useNodeReconcile(editor, 'root', false);
-
-  const cid = useComponentId();
-  useLock(editor, cid);
-
-  const children = useMemo(() => {
-    void updateKey;
-    return editor.getEditorState().read(() => {
-      const parent = $getNodeByKey('root');
-      if (!$isElementNode(parent)) return [];
-      return parent.getChildren().map((child) => {
-        return {
-          key: child.getKey(),
-          type: getNodeType(child),
-        };
-      });
-    });
-  }, [editor, updateKey]);
-
-  return (
-    <>
-      {children.map((child) => {
-        if (child.type === 'block') {
-          return <BlockComponent key={child.key} nodeKey={child.key} />;
-        }
-        if (child.type === 'element') {
-          return <ElementComponent key={child.key} nodeKey={child.key} />;
-        }
-        if (child.type === 'inline-element') {
-          return (
-            <ElementComponent
-              key={child.key}
-              nodeKey={child.key}
-              isInline={true}
-            />
-          );
-        }
-
-        throw new Error('Cannot render text as React');
-      })}
-    </>
-  );
-}
-
-const BlockComponent = memo(function BlockComponentBase(props: {
-  nodeKey: string;
-}) {
-  const {nodeKey} = props;
-  const editor = useEditor();
 
   const updateKey = useNodeReconcile(editor, nodeKey, false);
   const setRef = useNodeDOMSetter(editor, nodeKey);
@@ -498,68 +491,61 @@ const BlockComponent = memo(function BlockComponentBase(props: {
   }, [editor, nodeKey, updateKey]);
 
   const cid = useComponentId();
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [_hovered, setHovered] = useState(false);
   useLock(editor, cid);
 
-  const prefix = (() => {
-    if (blockType === 'bulleted_list_item') {
-      return '・';
-    }
-    if (blockType === 'numbered_list_item') {
-      return '1.';
-    }
-    if (blockType === 'to_do') {
-      return '[]';
-    }
-    return null;
-  })();
+  const {BlockComponent, BlockTextComponent} = useRenderConfig();
 
-  return (
-    <div ref={setRef} data-block={nodeKey}>
-      <div
-        style={{display: 'flex'}}
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}>
-        <div
-          contentEditable={false}
-          style={{
-            userSelect: 'none',
-            width: '1em',
-          }}>
-          {<div>{prefix ? prefix : ''}</div>}
-        </div>
-        <div style={{minWidth: '1em'}}>
-          {textNode && blockType && (
-            <BlockTextComponent
-              key={`${textNode.__key}__${blockType}`}
-              nodeKey={textNode.__key}
-              blockType={blockType}
-            />
-          )}
-        </div>
-      </div>
-      {restBlocks.length > 0 && (
-        <div style={{marginLeft: '18px'}}>
-          {restBlocks.map((block) => {
-            return <BlockComponent key={block.__key} nodeKey={block.__key} />;
-          })}
-        </div>
-      )}
-    </div>
-  );
-});
+  const getBlockComponentProps = () => {
+    return {
+      'data-block': nodeKey,
+      ref: setRef,
+    };
+  };
 
-const BlockTextComponent = memo(function BlockTextComponentBase(props: {
-  nodeKey: string;
-  blockType: BlockType;
-}) {
-  const {nodeKey} = props;
-  const editor = useEditor();
+  const renderBlockText = () => {
+    return (
+      textNode &&
+      blockType && (
+        <BlockTextComponent
+          key={`${textNode.__key}__${blockType}`}
+          nodeKey={textNode.__key}
+          blockType={blockType}
+        />
+      )
+    );
+  };
+
+  const hasChildBlocks = restBlocks.length > 0;
+
+  const renderChildBlocks = () => {
+    return (
+      <>
+        {restBlocks.map((block) => {
+          return <BlockComponent key={block.__key} nodeKey={block.__key} />;
+        })}
+      </>
+    );
+  };
+
+  return {
+    blockType,
+    getBlockComponentProps,
+    hasChildBlocks,
+    renderBlockText,
+    renderChildBlocks,
+  };
+}
+
+export function useBlockTextComponent({
+  nodeKey,
+  blockType,
+}: BlockTextComponentProps) {
+  const [editor] = useLexicalComposerContext();
 
   const updateKey = useNodeReconcile(editor, nodeKey, true);
+  const setRef = useNodeDOMSetter(editor, nodeKey);
 
-  const data = useMemo(() => {
+  useMemo(() => {
     void updateKey;
     return editor.getEditorState().read(() => {
       const element = $getNodeByKey(nodeKey);
@@ -570,75 +556,113 @@ const BlockTextComponent = memo(function BlockTextComponentBase(props: {
     });
   }, [editor, nodeKey, updateKey]);
 
-  const setRef = useNodeDOMSetter(editor, nodeKey);
+  const getBlockTextComponentProps = () => {
+    return {
+      'data-block-text': nodeKey,
+      ref: setRef,
+    };
+  };
 
-  if (!data) return null;
-
-  // TODO: Use dynamic tag
-  const Tag = blockTypeToTag(props.blockType);
-
-  return <Tag ref={setRef} className={'PlaygroundEditorTheme__paragraph'} />;
-});
-
-function blockTypeToTag(blockType: BlockType) {
-  switch (blockType) {
-    case 'paragraph':
-      return 'p';
-    case 'h1':
-      return 'h1';
-    case 'h2':
-      return 'h2';
-    case 'h3':
-      return 'h3';
-    // case 'heading-four':
-    //   return 'h4';
-    // case 'heading-five':
-    //   return 'h5';
-    // case 'heading-six':
-    //   return 'h6';
-    // case 'code-block':
-    //   return 'pre';
-    // case 'blockquote':
-    //   return 'blockquote';
-    // case 'unordered-list':
-    //   return 'ul';
-    // case 'ordered-list':
-    //   return 'ol';
-    // case 'list-item':
-    // return 'li';
-    default:
-      return 'div';
-  }
+  return {
+    getBlockTextComponentProps,
+  };
 }
 
-const ElementComponent = memo(function ElementComponentBase(props: {
-  nodeKey: string;
-  isInline?: boolean;
-}) {
-  const {nodeKey} = props;
-  const editor = useEditor();
+export function useRootComponent() {
+  const [editor] = useLexicalComposerContext();
+  const updateKey = useNodeReconcile(editor, 'root', false);
+
+  const cid = useComponentId();
+  useLock(editor, cid);
+
+  const children = useMemo(() => {
+    void updateKey;
+    return editor.getEditorState().read(() => {
+      const parent = $getNodeByKey('root');
+      if (!$isElementNode(parent)) return [];
+      return parent.getChildren().map((child) => {
+        return {
+          key: child.getKey(),
+          type: getNodeType(child),
+        };
+      });
+    });
+  }, [editor, updateKey]);
+
+  const {BlockComponent, ElementComponent} = useRenderConfig();
+
+  const renderChildren = () => {
+    return (
+      <>
+        {children.map((child) => {
+          if (child.type === 'block') {
+            return <BlockComponent key={child.key} nodeKey={child.key} />;
+          }
+          if (child.type === 'element') {
+            return (
+              <ElementComponent
+                key={child.key}
+                nodeKey={child.key}
+                isInline={false}
+              />
+            );
+          }
+          if (child.type === 'inline-element') {
+            return (
+              <ElementComponent
+                key={child.key}
+                nodeKey={child.key}
+                isInline={true}
+              />
+            );
+          }
+
+          throw new Error('Cannot render text as React');
+        })}
+      </>
+    );
+  };
+
+  return {
+    renderChildren,
+  };
+}
+
+export function useElementComponent({nodeKey}: ElementComponentProps) {
+  const [editor] = useLexicalComposerContext();
 
   const updateKey = useNodeReconcile(editor, nodeKey, true);
 
-  const data = useMemo(() => {
+  const {Tag} = useMemo(() => {
     void updateKey;
     return editor.getEditorState().read(() => {
       const element = $getNodeByKey(nodeKey);
-      if (!$isElementNode(element)) return null;
+      if (!$isElementNode(element))
+        return {
+          Tag: 'div',
+        };
       return {
-        tag: 'p',
+        Tag: 'div',
       };
     });
   }, [editor, nodeKey, updateKey]);
 
   const setRef = useNodeDOMSetter(editor, nodeKey);
 
-  if (!data) return null;
+  const getElementComponentProps = () => {
+    return {
+      'data-element': nodeKey,
+      ref: setRef,
+    };
+  };
 
-  const Tag = data.tag as 'div';
-
-  return <Tag ref={setRef} className={'PlaygroundEditorTheme__paragraph'} />;
-});
+  return {
+    Tag: Tag as unknown as (
+      props: React.ComponentPropsWithRef<'div'>,
+    ) => JSX.Element,
+    getElementComponentProps,
+  };
+}
 
 function useNodeDOMSetter(editor: LexicalEditor, nodeKey: string) {
   const setBlockKeyToDOM = useCallback(
@@ -761,4 +785,19 @@ function useLock(editor: LexicalEditor, lockId: string) {
       editor.lockMutation(lockId);
     };
   });
+}
+
+function getNodeType(
+  node: LexicalNode,
+): 'element' | 'inline-element' | 'text' | 'block' {
+  if ($isBlockNode(node)) {
+    return 'block';
+  }
+  if ($isElementNode(node)) {
+    return node.isInline() ? 'inline-element' : 'element';
+  }
+  if ($isTextNode(node)) {
+    return 'text';
+  }
+  throw new Error('Unknown node type');
 }
