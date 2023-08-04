@@ -313,13 +313,13 @@ export const RootComponent: RootComponentType = memo(
             (index === highlight.end && highlight.inclusiveEnd)
           ) {
             blockTextHighlightsChanged = true;
-            if (highlight.invalidateOnTextChange) {
-              continue;
-            }
             const newText = highlight.text
               .split('')
               .splice(index - highlight.start, remove, insert)
               .join('');
+            if (highlight.invalidateOnTextChange || newText === '') {
+              continue;
+            }
             newBlockTextHighlights.push({
               ...highlight,
               end: highlight.end - remove + insert.length,

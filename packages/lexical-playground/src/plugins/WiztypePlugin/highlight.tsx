@@ -67,7 +67,6 @@ function registerSearchHighlight(
       for (const match of matches) {
         const start = match.index ?? 0;
         const end = start + match[0].length;
-        // const domRange = createDOMRange(editor, blockTextKey, start, end);
         const text = match[0];
         highlights.push({
           blockTextKey,
