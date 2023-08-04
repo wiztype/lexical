@@ -553,8 +553,8 @@ export function useBlockTextComponent({
   useMemo(() => {
     void updateKey;
     return editor.getEditorState().read(() => {
-      const element = $getNodeByKey(nodeKey);
-      if (!$isBlockTextNode(element)) return null;
+      const node = $getNodeByKey(nodeKey);
+      if (!$isBlockTextNode(node)) return null;
       return {
         tag: 'p',
       };
@@ -569,8 +569,10 @@ export function useBlockTextComponent({
   };
 
   return {
+    editor,
     getBlockTextComponentProps,
     ref,
+    updateKey,
   };
 }
 
@@ -630,6 +632,7 @@ export function useRootComponent() {
   };
 
   return {
+    editor,
     renderChildren,
   };
 }
@@ -690,6 +693,30 @@ function useNodeDOMSetter(editor: LexicalEditor, nodeKey: string) {
   return {ref, setRef: setBlockKeyToDOM};
 }
 
+export function useNodeUpdater(
+  editor: LexicalEditor,
+  nodeKey: string,
+  callback: () => void,
+) {
+  useLayoutEffect(() => {
+    let set = editor._keyToUpdatersMap.get(nodeKey);
+    if (!set) {
+      set = new Set();
+      editor._keyToUpdatersMap.set(nodeKey, set);
+    }
+    set.add(callback);
+
+    return () => {
+      if (set) {
+        set.delete(callback);
+        if (set.size === 0) {
+          editor._keyToUpdatersMap.delete(nodeKey);
+        }
+      }
+    };
+  }, [callback, editor, nodeKey]);
+}
+
 function useNodeReconcile(
   editor: LexicalEditor,
   nodeKey: NodeKey,
@@ -699,32 +726,13 @@ function useNodeReconcile(
   const [updateKey, setUpdateKey] = useState(0);
   const cid = useComponentId();
 
-  useLayoutEffect(() => {
-    const handler = () => {
-      setUpdateKey((key) => {
-        return key + 1;
-      });
-    };
-    let set = editor._keyToUpdatersMap.get(nodeKey);
-    if (!set) {
-      set = new Set();
-      editor._keyToUpdatersMap.set(nodeKey, set);
-    }
-    set.add(handler);
-
-    return () => {
-      if (set) {
-        set.delete(handler);
-        if (set.size === 0) {
-          editor._keyToUpdatersMap.delete(nodeKey);
-        }
-      }
-    };
-  }, [editor, nodeKey]);
+  const increaseUpdateKey = useCallback(() => {
+    setUpdateKey((key) => key + 1);
+  }, []);
+  useNodeUpdater(editor, nodeKey, increaseUpdateKey);
 
   useLayoutEffect(() => {
-    const initialRender = updateKey === 0;
-    if (initialRender) return;
+    if (updateKey === 0) return;
     if (editor._reconcilingContext) {
       const prevNode = editor._reconcilingContext.prevNodeMap.get(nodeKey);
       const nextNode = editor._reconcilingContext.nextNodeMap.get(nodeKey);

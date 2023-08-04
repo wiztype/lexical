@@ -63,6 +63,7 @@ let activeDirtyLeaves: Set<NodeKey>;
 let activePrevNodeMap: NodeMap;
 let activeNextNodeMap: NodeMap;
 let activePrevKeyToDOMMap: Map<NodeKey, HTMLElement>;
+let activePrevKeyToUpdatersMap: Map<NodeKey, Set<() => void>>;
 let mutatedNodes: MutatedNodes;
 
 function destroyNode(key: NodeKey, parentDOM: null | HTMLElement): void {
@@ -805,6 +806,7 @@ export function reconcileRoot(
   activeNextNodeMap = nextEditorState._nodeMap;
   activeEditorStateReadOnly = nextEditorState._readOnly;
   activePrevKeyToDOMMap = new Map(editor._keyToDOMMap);
+  activePrevKeyToUpdatersMap = new Map(editor._keyToUpdatersMap);
   // We keep track of mutated nodes so we can trigger mutation
   // listeners later in the update cycle.
   const currentMutatedNodes = new Map();
@@ -836,6 +838,8 @@ export function reconcileRoot(
   activeEditorConfig = undefined;
   // @ts-ignore
   activePrevKeyToDOMMap = undefined;
+  // @ts-ignore
+  activePrevKeyToUpdatersMap = undefined;
   // @ts-ignore
   mutatedNodes = undefined;
 
@@ -871,6 +875,8 @@ export interface ReconcilingContext {
   prevNodeMap: NodeMap;
   nextNodeMap: NodeMap;
   nextReadOnly: boolean;
+  dirtyElements: Map<NodeKey, IntentionallyMarkedAsDirtyElement>;
+  dirtyLeaves: Set<NodeKey>;
   alreadyMutatedNodes: Set<string>;
   setMutatedNode(nodeKey: NodeKey, type: NodeMutation): void;
   createBlockTextChildren(nodeKey: NodeKey, dom: HTMLElement): void;
@@ -944,6 +950,8 @@ function reconcileRootReact(): void {
       alreadyMutatedNodes: new Set(),
       createBlockTextChildren,
       destroyBlockTextChildren,
+      dirtyElements: activeDirtyElements,
+      dirtyLeaves: activeDirtyLeaves,
       nextNodeMap: activeNextNodeMap,
       nextReadOnly: activeEditorStateReadOnly,
       prevNodeMap: activePrevNodeMap,
@@ -953,14 +961,14 @@ function reconcileRootReact(): void {
 
     flushSync(() => {
       if (treatAllNodesAsDirty) {
-        activeEditor._keyToUpdatersMap.forEach((updaters, nodeKey) => {
+        activePrevKeyToUpdatersMap.forEach((updaters, nodeKey) => {
           updaters.forEach((updater) => {
             updater();
           });
         });
       } else {
         activeDirtyElements.forEach((_, nodeKey) => {
-          const updaters = activeEditor._keyToUpdatersMap.get(nodeKey);
+          const updaters = activePrevKeyToUpdatersMap.get(nodeKey);
           if (updaters) {
             updaters.forEach((updater) => {
               updater();

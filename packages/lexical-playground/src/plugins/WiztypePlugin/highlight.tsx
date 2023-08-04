@@ -5,17 +5,15 @@
  * LICENSE file in the root directory of this source tree.
  *
  */
+import {mergeRegister} from '@lexical/utils';
 import {
-  $getNearestBlockElementAncestorOrThrow,
-  mergeRegister,
-} from '@lexical/utils';
-import {
-  $getNodeByKey,
+  $getRoot,
   $isBlockTextNode,
+  $isElementNode,
   BlockTextNode,
   LexicalEditor,
+  LexicalNode,
   NodeKey,
-  TextNode,
 } from 'lexical';
 import * as React from 'react';
 import {
@@ -51,76 +49,71 @@ export function useSearchHighlight(editor: LexicalEditor, search: string) {
   }, [editor, search, setHighlights]);
 }
 
-// TODO: registerBlockTextEntity としてまとめられそう
 function registerSearchHighlight(
   editor: LexicalEditor,
   search: string,
   callback: (updates: Map<NodeKey, HighlightRange[]>) => void,
 ) {
-  const changeBlockTextIds = new Set<string>();
-
-  const blockTextTransform = (node: BlockTextNode) => {
-    const blockTextKey = node.getKey();
-    changeBlockTextIds.add(blockTextKey);
-  };
-
-  const textNodeTransform = (node: TextNode) => {
-    // Find parent block text node
-    const blockText = $getNearestBlockElementAncestorOrThrow(node);
-    if ($isBlockTextNode(blockText)) {
-      blockTextTransform(blockText);
+  editor.getEditorState().read(() => {
+    const root = $getRoot();
+    const blockTextNodes = getAllBlockTextNodes(root);
+    const highlightsMap = new Map<NodeKey, HighlightRange[]>();
+    for (const blockText of blockTextNodes) {
+      const blockTextKey = blockText.getKey();
+      const matches = blockText
+        .getTextContent()
+        .matchAll(new RegExp(search, 'g'));
+      const highlights: HighlightRange[] = [];
+      for (const match of matches) {
+        const start = match.index ?? 0;
+        const end = start + match[0].length;
+        // const domRange = createDOMRange(editor, blockTextKey, start, end);
+        const text = match[0];
+        highlights.push({
+          blockTextKey,
+          end,
+          inclusiveEnd: false,
+          inclusiveStart: false,
+          initialText: text,
+          invalidateOnTextChange: true,
+          start,
+          text,
+        });
+      }
+      if (highlights.length > 0) {
+        highlightsMap.set(blockTextKey, highlights);
+      }
     }
-  };
+    callback(highlightsMap);
+  });
 
   return mergeRegister(
-    editor.registerNodeTransform(TextNode, textNodeTransform),
-    editor.registerNodeTransform(BlockTextNode, blockTextTransform),
     editor.registerUpdateListener(({editorState}) => {
-      if (changeBlockTextIds.size === 0) return;
-
-      editorState.read(() => {
-        const updates = new Map<NodeKey, HighlightRange[]>();
-        for (const blockTextId of changeBlockTextIds) {
-          const blockText = $getNodeByKey(blockTextId);
-          if ($isBlockTextNode(blockText)) {
-            // マッチしているかどうかの判断
-            const matches = blockText
-              .getTextContent()
-              .matchAll(new RegExp(search, 'g'));
-            if (matches) {
-              const ranges: HighlightRange[] = [];
-              for (const match of matches) {
-                ranges.push({
-                  attrs: {
-                    name: 'search',
-                  },
-                  end: (match.index ?? 0) + match[0].length,
-                  start: match.index ?? 0,
-                });
-              }
-              updates.set(blockTextId, ranges);
-            } else {
-              updates.set(blockTextId, []);
-            }
-          }
-        }
-        callback(updates);
-      });
-
-      changeBlockTextIds.clear();
+      // console.log('handle transform highlights', editorState);
     }),
   );
 }
 
-type HighlightRange = {
+function getAllBlockTextNodes(node: LexicalNode): BlockTextNode[] {
+  if ($isBlockTextNode(node)) {
+    return [node];
+  }
+  if ($isElementNode(node)) {
+    return node.getChildren().flatMap(getAllBlockTextNodes);
+  }
+
+  return [];
+}
+
+export type HighlightRange = {
+  blockTextKey: NodeKey;
   start: number;
   end: number;
-  attrs: {
-    name: string;
-    priority?: number;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    [key: string]: any;
-  };
+  text: string;
+  initialText: string;
+  invalidateOnTextChange: boolean;
+  inclusiveStart: boolean;
+  inclusiveEnd: boolean;
 };
 
 type HighlightsContextValue = Map<NodeKey, HighlightRange[]>;
@@ -130,7 +123,7 @@ const HighlightsContext = createContext<
   | null
 >(null);
 
-function useHighlightsContext() {
+export function useHighlightsContext() {
   const context = useContext(HighlightsContext);
   if (!context) {
     invariant(
