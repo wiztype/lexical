@@ -17,6 +17,7 @@ import {createEmptyEditorState} from './LexicalEditorState';
 import {addRootElementEvents, removeRootElementEvents} from './LexicalEvents';
 import {flushRootMutations, initMutationObserver} from './LexicalMutations';
 import {LexicalNode} from './LexicalNode';
+import {ReconcilingContext} from './LexicalReconciler';
 import {
   commitPendingUpdates,
   internalGetActiveEditor,
@@ -297,7 +298,6 @@ export function resetEditor(
   pendingEditorState: EditorState,
 ): void {
   const keyNodeMap = editor._keyToDOMMap;
-  keyNodeMap.clear();
   editor._editorState = createEmptyEditorState();
   editor._pendingEditorState = pendingEditorState;
   editor._compositionKey = null;
@@ -317,13 +317,7 @@ export function resetEditor(
     editor._observer = null;
   }
 
-  // Remove all the DOM nodes from the root element
-  if (prevRootElement !== null) {
-    prevRootElement.textContent = '';
-  }
-
   if (nextRootElement !== null) {
-    nextRootElement.textContent = '';
     keyNodeMap.set('root', nextRootElement);
   }
 }
@@ -550,6 +544,13 @@ export class LexicalEditor {
   _blockCursorElement: null | HTMLDivElement;
 
   /** @internal */
+  _keyToUpdatersMap: Map<NodeKey, Set<() => void>>;
+  /** @internal */
+  _reconcilingContext: ReconcilingContext | null;
+  /** @internal */
+  _mutatingIds: Set<string>;
+
+  /** @internal */
   constructor(
     editorState: EditorState,
     parentEditor: null | LexicalEditor,
@@ -609,6 +610,10 @@ export class LexicalEditor {
     this._headless = parentEditor !== null && parentEditor._headless;
     this._window = null;
     this._blockCursorElement = null;
+
+    this._keyToUpdatersMap = new Map();
+    this._reconcilingContext = null;
+    this._mutatingIds = new Set();
   }
 
   /**
@@ -941,7 +946,7 @@ export class LexicalEditor {
 
         this._updateTags.add('history-merge');
 
-        commitPendingUpdates(this);
+        // commitPendingUpdates(this);
 
         // TODO: remove this flag once we no longer use UEv2 internally
         if (!this._config.disableEvents) {
@@ -1146,4 +1151,39 @@ export class LexicalEditor {
       editorState: this._editorState.toJSON(),
     };
   }
+
+  unlockMutation(lockId: string) {
+    const noLock = this._mutatingIds.size === 0;
+    this._mutatingIds.add(lockId);
+    if (noLock && this._observer !== null) {
+      this._observer.disconnect();
+    }
+  }
+
+  lockMutation(lockId: string) {
+    const prevNoLock = this._mutatingIds.size === 0;
+    this._mutatingIds.delete(lockId);
+    const nextNoLock = this._mutatingIds.size === 0;
+    if (
+      !prevNoLock &&
+      nextNoLock &&
+      this._observer !== null &&
+      this._rootElement !== null
+    ) {
+      this._observer.observe(this._rootElement, observerOptions);
+    }
+  }
+
+  resetMutationLocks() {
+    this._mutatingIds.clear();
+    if (this._observer) {
+      this._observer.disconnect();
+    }
+  }
 }
+
+const observerOptions = {
+  characterData: true,
+  childList: true,
+  subtree: true,
+};

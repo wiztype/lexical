@@ -61,12 +61,6 @@ let isReadOnlyMode = false;
 let isAttemptingToRecoverFromReconcilerError = false;
 let infiniteTransformCount = 0;
 
-const observerOptions = {
-  characterData: true,
-  childList: true,
-  subtree: true,
-};
-
 export function isCurrentlyReadOnlyMode(): boolean {
   return (
     isReadOnlyMode ||
@@ -472,7 +466,7 @@ export function commitPendingUpdates(
       const dirtyType = editor._dirtyType;
       const dirtyElements = editor._dirtyElements;
       const dirtyLeaves = editor._dirtyLeaves;
-      observer.disconnect();
+      editor.unlockMutation('reconciler');
 
       mutatedNodes = reconcileRoot(
         currentEditorState,
@@ -503,7 +497,7 @@ export function commitPendingUpdates(
 
       return;
     } finally {
-      observer.observe(rootElement as Node, observerOptions);
+      editor.lockMutation('reconciler');
       editor._updating = previouslyUpdating;
       activeEditorState = previousActiveEditorState;
       isReadOnlyMode = previousReadOnlyMode;
@@ -557,9 +551,7 @@ export function commitPendingUpdates(
     activeEditor = editor;
     activeEditorState = pendingEditorState;
     try {
-      if (observer !== null) {
-        observer.disconnect();
-      }
+      editor.unlockMutation('selection');
       if (needsUpdate || pendingSelection === null || pendingSelection.dirty) {
         const blockCursorElement = editor._blockCursorElement;
         if (blockCursorElement !== null) {
@@ -584,9 +576,7 @@ export function commitPendingUpdates(
         rootElement as HTMLElement,
         pendingSelection,
       );
-      if (observer !== null) {
-        observer.observe(rootElement as Node, observerOptions);
-      }
+      editor.lockMutation('selection');
     } finally {
       activeEditor = previousActiveEditor;
       activeEditorState = previousActiveEditorState;

@@ -1,5 +1,5 @@
 {
-  "name": "@lexical/history",
+  "name": "@wiztype/history",
   "description": "This package contains selection history helpers for Lexical.",
   "keywords": [
     "lexical",

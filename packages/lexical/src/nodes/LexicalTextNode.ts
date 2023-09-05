@@ -440,6 +440,14 @@ export class TextNode extends LexicalNode {
 
   // View
 
+  getInnerTag(): string {
+    return getElementInnerTag(this, this.__format);
+  }
+
+  getOuterTag(): string | null {
+    return getElementOuterTag(this, this.__format);
+  }
+
   createDOM(config: EditorConfig): HTMLElement {
     const format = this.__format;
     const outerTag = getElementOuterTag(this, format);

@@ -8,13 +8,31 @@
 
 import './ContentEditable.css';
 
-import {ContentEditable} from '@lexical/react/LexicalContentEditable';
+// import {ContentEditable} from '@lexical/react/LexicalContentEditable';
+import {WiztypeContentEditable} from '@lexical/react/WiztypeContentEditable';
 import * as React from 'react';
+
+import {
+  BlockComponent,
+  BlockTextComponent,
+  ElementComponent,
+  RootComponent,
+} from '../plugins/WiztypePlugin/ui';
 
 export default function LexicalContentEditable({
   className,
 }: {
   className?: string;
 }): JSX.Element {
-  return <ContentEditable className={className || 'ContentEditable__root'} />;
+  return (
+    <WiztypeContentEditable
+      initialConfig={{
+        BlockComponent,
+        BlockTextComponent,
+        ElementComponent,
+        RootComponent,
+      }}
+      className={className || 'ContentEditable__root'}
+    />
+  );
 }

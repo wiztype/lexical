@@ -1,5 +1,5 @@
 {
-  "name": "@lexical/mark",
+  "name": "@wiztype/mark",
   "description": "This package contains helpers and nodes for wrapping content in marks for Lexical.",
   "keywords": [
     "lexical",

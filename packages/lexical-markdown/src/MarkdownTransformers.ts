@@ -6,14 +6,11 @@
  *
  */
 
-import type {ListType} from '@lexical/list';
 import type {HeadingTagType} from '@lexical/rich-text';
 
 import {$createCodeNode, $isCodeNode, CodeNode} from '@lexical/code';
 import {$createLinkNode, $isLinkNode, LinkNode} from '@lexical/link';
 import {
-  $createListItemNode,
-  $createListNode,
   $isListItemNode,
   $isListNode,
   ListItemNode,
@@ -30,7 +27,10 @@ import {
 import {
   $createLineBreakNode,
   $createTextNode,
+  $isBlockNode,
+  $isBlockTextNode,
   $isTextNode,
+  BlockNode,
   ElementNode,
   Klass,
   LexicalNode,
@@ -83,59 +83,36 @@ export type TextMatchTransformer = Readonly<{
   type: 'text-match';
 }>;
 
-const createBlockNode = (
-  createNode: (match: Array<string>) => ElementNode,
+const createOrUpdateBlockNode = (
+  createOrUpdateNode: (
+    match: Array<string>,
+    block?: BlockNode,
+  ) => ElementNode | undefined,
 ): ElementTransformer['replace'] => {
   return (parentNode, children, match) => {
-    const node = createNode(match);
-    node.append(...children);
-    parentNode.replace(node);
-    node.select(0, 0);
+    const grandParent = parentNode.getParent();
+    let node: ElementNode | undefined;
+    if ($isBlockTextNode(parentNode) && $isBlockNode(grandParent)) {
+      node = createOrUpdateNode(match, grandParent);
+      if (!node) {
+        parentNode.select(0, 0);
+        return;
+      }
+    }
+    if (!node) {
+      node = createOrUpdateNode(match);
+    }
+    if (node) {
+      node.append(...children);
+      parentNode.replace(node);
+      node.select(0, 0);
+    }
   };
 };
 
 // Amount of spaces that define indentation level
 // TODO: should be an option
 const LIST_INDENT_SIZE = 4;
-
-const listReplace = (listType: ListType): ElementTransformer['replace'] => {
-  return (parentNode, children, match) => {
-    const previousNode = parentNode.getPreviousSibling();
-    const nextNode = parentNode.getNextSibling();
-    const listItem = $createListItemNode(
-      listType === 'check' ? match[3] === 'x' : undefined,
-    );
-    if ($isListNode(nextNode) && nextNode.getListType() === listType) {
-      const firstChild = nextNode.getFirstChild();
-      if (firstChild !== null) {
-        firstChild.insertBefore(listItem);
-      } else {
-        // should never happen, but let's handle gracefully, just in case.
-        nextNode.append(listItem);
-      }
-      parentNode.remove();
-    } else if (
-      $isListNode(previousNode) &&
-      previousNode.getListType() === listType
-    ) {
-      previousNode.append(listItem);
-      parentNode.remove();
-    } else {
-      const list = $createListNode(
-        listType,
-        listType === 'number' ? Number(match[2]) : undefined,
-      );
-      list.append(listItem);
-      parentNode.replace(list);
-    }
-    listItem.append(...children);
-    listItem.select(0, 0);
-    const indent = Math.floor(match[1].length / LIST_INDENT_SIZE);
-    if (indent) {
-      listItem.setIndent(indent);
-    }
-  };
-};
 
 const listExport = (
   listNode: ListNode,
@@ -180,7 +157,11 @@ export const HEADING: ElementTransformer = {
     return '#'.repeat(level) + ' ' + exportChildren(node);
   },
   regExp: /^(#{1,6})\s/,
-  replace: createBlockNode((match) => {
+  replace: createOrUpdateBlockNode((match, block) => {
+    if (block) {
+      block.setBlockType(`h${match[1].length}` as HeadingTagType);
+      return;
+    }
     const tag = ('h' + match[1].length) as HeadingTagType;
     return $createHeadingNode(tag);
   }),
@@ -240,7 +221,7 @@ export const CODE: ElementTransformer = {
     );
   },
   regExp: /^```(\w{1,10})?\s/,
-  replace: createBlockNode((match) => {
+  replace: createOrUpdateBlockNode((match) => {
     return $createCodeNode(match ? match[1] : undefined);
   }),
   type: 'element',
@@ -252,7 +233,12 @@ export const UNORDERED_LIST: ElementTransformer = {
     return $isListNode(node) ? listExport(node, exportChildren, 0) : null;
   },
   regExp: /^(\s*)[-*+]\s/,
-  replace: listReplace('bullet'),
+  replace: createOrUpdateBlockNode((_match, block) => {
+    if (block) {
+      block.setBlockType('bulleted_list_item');
+    }
+    return undefined;
+  }),
   type: 'element',
 };
 
@@ -262,7 +248,12 @@ export const CHECK_LIST: ElementTransformer = {
     return $isListNode(node) ? listExport(node, exportChildren, 0) : null;
   },
   regExp: /^(\s*)(?:-\s)?\s?(\[(\s|x)?\])\s/i,
-  replace: listReplace('check'),
+  replace: createOrUpdateBlockNode((_match, block) => {
+    if (block) {
+      block.setBlockType('to_do');
+    }
+    return undefined;
+  }),
   type: 'element',
 };
 
@@ -272,7 +263,12 @@ export const ORDERED_LIST: ElementTransformer = {
     return $isListNode(node) ? listExport(node, exportChildren, 0) : null;
   },
   regExp: /^(\s*)(\d{1,})\.\s/,
-  replace: listReplace('number'),
+  replace: createOrUpdateBlockNode((_match, block) => {
+    if (block) {
+      block.setBlockType('numbered_list_item');
+    }
+    return undefined;
+  }),
   type: 'element',
 };
 

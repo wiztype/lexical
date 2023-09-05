@@ -1,5 +1,5 @@
 {
-  "name": "lexical",
+  "name": "@wiztype/core",
   "description": "Lexical is an extensible text editor framework that provides excellent reliability, accessible and performance.",
   "keywords": [
     "react",

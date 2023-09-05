@@ -25,6 +25,7 @@ import PasteLogPlugin from './plugins/PasteLogPlugin';
 import {TableContext} from './plugins/TablePlugin';
 import TestRecorderPlugin from './plugins/TestRecorderPlugin';
 import TypingPerfPlugin from './plugins/TypingPerfPlugin';
+import {WiztypeContextProvider} from './plugins/WiztypePlugin';
 import Settings from './Settings';
 import PlaygroundEditorTheme from './themes/PlaygroundEditorTheme';
 
@@ -136,20 +137,22 @@ function App(): JSX.Element {
       <SharedHistoryContext>
         <TableContext>
           <SharedAutocompleteContext>
-            <header>
-              <a href="https://lexical.dev" target="_blank" rel="noreferrer">
-                <img src={logo} alt="Lexical Logo" />
-              </a>
-            </header>
-            <div className="editor-shell">
-              <Editor />
-            </div>
-            <Settings />
-            {isDevPlayground ? <DocsPlugin /> : null}
-            {isDevPlayground ? <PasteLogPlugin /> : null}
-            {isDevPlayground ? <TestRecorderPlugin /> : null}
+            <WiztypeContextProvider>
+              <header>
+                <a href="https://lexical.dev" target="_blank" rel="noreferrer">
+                  <img src={logo} alt="Lexical Logo" />
+                </a>
+              </header>
+              <div className="editor-shell">
+                <Editor />
+              </div>
+              <Settings />
+              {isDevPlayground ? <DocsPlugin /> : null}
+              {isDevPlayground ? <PasteLogPlugin /> : null}
+              {isDevPlayground ? <TestRecorderPlugin /> : null}
 
-            {measureTypingPerf ? <TypingPerfPlugin /> : null}
+              {measureTypingPerf ? <TypingPerfPlugin /> : null}
+            </WiztypeContextProvider>
           </SharedAutocompleteContext>
         </TableContext>
       </SharedHistoryContext>

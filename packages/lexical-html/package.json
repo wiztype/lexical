@@ -1,5 +1,5 @@
 {
-  "name": "@lexical/html",
+  "name": "@wiztype/html",
   "description": "This package contains HTML helpers and functionality for Lexical.",
   "keywords": [
     "lexical",

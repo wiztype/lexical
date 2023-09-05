@@ -1,5 +1,5 @@
 {
-  "name": "@lexical/headless",
+  "name": "@wiztype/headless",
   "description": "This package contains Headless helpers and functionality for Lexical.",
   "keywords": [
     "lexical",

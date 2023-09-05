@@ -11,11 +11,13 @@ import type {
   LexicalEditor,
   MutatedNodes,
   MutationListeners,
+  NodeMutation,
   RegisteredNodes,
 } from './LexicalEditor';
 import type {NodeKey, NodeMap} from './LexicalNode';
 import type {ElementNode} from './nodes/LexicalElementNode';
 
+import {flushSync} from 'react-dom';
 import invariant from 'shared/invariant';
 
 import {
@@ -61,6 +63,7 @@ let activeDirtyLeaves: Set<NodeKey>;
 let activePrevNodeMap: NodeMap;
 let activeNextNodeMap: NodeMap;
 let activePrevKeyToDOMMap: Map<NodeKey, HTMLElement>;
+let activePrevKeyToUpdatersMap: Map<NodeKey, Set<() => void>>;
 let mutatedNodes: MutatedNodes;
 
 function destroyNode(key: NodeKey, parentDOM: null | HTMLElement): void {
@@ -774,6 +777,8 @@ function reconcileNodeChildren(
   }
 }
 
+const useReact = true;
+
 export function reconcileRoot(
   prevEditorState: EditorState,
   nextEditorState: EditorState,
@@ -801,11 +806,18 @@ export function reconcileRoot(
   activeNextNodeMap = nextEditorState._nodeMap;
   activeEditorStateReadOnly = nextEditorState._readOnly;
   activePrevKeyToDOMMap = new Map(editor._keyToDOMMap);
+  activePrevKeyToUpdatersMap = new Map(editor._keyToUpdatersMap);
   // We keep track of mutated nodes so we can trigger mutation
   // listeners later in the update cycle.
   const currentMutatedNodes = new Map();
   mutatedNodes = currentMutatedNodes;
-  reconcileNode('root', null);
+
+  if (useReact) {
+    reconcileRootReact();
+  } else {
+    reconcileNode('root', null);
+  }
+
   // We don't want a bunch of void checks throughout the scope
   // so instead we make it seem that these values are always set.
   // We also want to make sure we clear them down, otherwise we
@@ -826,6 +838,8 @@ export function reconcileRoot(
   activeEditorConfig = undefined;
   // @ts-ignore
   activePrevKeyToDOMMap = undefined;
+  // @ts-ignore
+  activePrevKeyToUpdatersMap = undefined;
   // @ts-ignore
   mutatedNodes = undefined;
 
@@ -855,4 +869,116 @@ function getPrevElementByKeyOrThrow(key: NodeKey): HTMLElement {
   }
 
   return element;
+}
+
+export interface ReconcilingContext {
+  prevNodeMap: NodeMap;
+  nextNodeMap: NodeMap;
+  nextReadOnly: boolean;
+  dirtyElements: Map<NodeKey, IntentionallyMarkedAsDirtyElement>;
+  dirtyLeaves: Set<NodeKey>;
+  alreadyMutatedNodes: Set<string>;
+  setMutatedNode(nodeKey: NodeKey, type: NodeMutation): void;
+  createBlockTextChildren(nodeKey: NodeKey, dom: HTMLElement): void;
+  updateBlockTextChildren(nodeKey: NodeKey, dom: HTMLElement): void;
+  destroyBlockTextChildren(nodeKey: NodeKey, dom: HTMLElement): void;
+}
+
+function reconcileRootReact(): void {
+  if (
+    treatAllNodesAsDirty ||
+    activeDirtyElements.size > 0 ||
+    activeDirtyLeaves.size > 0
+  ) {
+    const _setMutatedNode = (nodeKey: NodeKey, type: NodeMutation) => {
+      if (type === 'destroyed') {
+        const node = activePrevNodeMap.get(nodeKey);
+        if (node !== undefined) {
+          setMutatedNode(
+            mutatedNodes,
+            activeEditor._nodes,
+            activeEditor._listeners.mutation,
+            node,
+            'destroyed',
+          );
+        }
+      } else {
+        const node = activeNextNodeMap.get(nodeKey);
+        if (node === undefined) {
+          invariant(
+            false,
+            'reconcileNode: node(%s) does not exist in nodeMap by %s',
+            nodeKey,
+            type,
+          );
+        }
+        setMutatedNode(
+          mutatedNodes,
+          activeEditor._nodes,
+          activeEditor._listeners.mutation,
+          node,
+          type,
+        );
+      }
+    };
+    const createBlockTextChildren = (nodeKey: NodeKey, dom: HTMLElement) => {
+      const nextNode = activeNextNodeMap.get(nodeKey);
+      if (!$isElementNode(nextNode)) return;
+      const children = createChildrenArray(nextNode, activeNextNodeMap);
+      const endIndex = nextNode.__size - 1;
+      createChildren(children, nextNode, 0, endIndex, dom, null);
+      if (!nextNode.isInline()) {
+        reconcileElementTerminatingLineBreak(null, nextNode, dom);
+      }
+    };
+    const updateBlockTextChildren = (nodeKey: NodeKey, dom: HTMLElement) => {
+      const prevNode = activePrevNodeMap.get(nodeKey);
+      const nextNode = activeNextNodeMap.get(nodeKey);
+      if (!$isElementNode(prevNode) || !$isElementNode(nextNode)) return;
+      reconcileChildren(prevNode, nextNode, dom);
+      if (!$isRootNode(nextNode) && !nextNode.isInline()) {
+        reconcileElementTerminatingLineBreak(prevNode, nextNode, dom);
+      }
+    };
+    const destroyBlockTextChildren = (nodeKey: NodeKey, dom: HTMLElement) => {
+      const prevNode = activePrevNodeMap.get(nodeKey);
+      if (!$isElementNode(prevNode)) return;
+      const children = createChildrenArray(prevNode, activePrevNodeMap);
+      destroyChildren(children, 0, children.length - 1, null);
+    };
+    activeEditor._reconcilingContext = {
+      alreadyMutatedNodes: new Set(),
+      createBlockTextChildren,
+      destroyBlockTextChildren,
+      dirtyElements: activeDirtyElements,
+      dirtyLeaves: activeDirtyLeaves,
+      nextNodeMap: activeNextNodeMap,
+      nextReadOnly: activeEditorStateReadOnly,
+      prevNodeMap: activePrevNodeMap,
+      setMutatedNode: _setMutatedNode,
+      updateBlockTextChildren,
+    };
+
+    flushSync(() => {
+      if (treatAllNodesAsDirty) {
+        activePrevKeyToUpdatersMap.forEach((updaters, nodeKey) => {
+          updaters.forEach((updater) => {
+            updater();
+          });
+        });
+      } else {
+        activeDirtyElements.forEach((_, nodeKey) => {
+          const updaters = activePrevKeyToUpdatersMap.get(nodeKey);
+          if (updaters) {
+            updaters.forEach((updater) => {
+              updater();
+            });
+          }
+        });
+        // dirtyLeaves are updated from ElementComponent.
+      }
+    });
+
+    activeEditor._reconcilingContext = null;
+  }
 }

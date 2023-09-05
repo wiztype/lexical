@@ -1,5 +1,5 @@
 {
-  "name": "@lexical/yjs",
+  "name": "@wiztype/yjs",
   "description": "The library provides Yjs editor bindings for Lexical.",
   "keywords": [
     "react",

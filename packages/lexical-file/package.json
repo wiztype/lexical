@@ -1,5 +1,5 @@
 {
-  "name": "@lexical/file",
+  "name": "@wiztype/file",
   "description": "This package provides the file import/export feature for Lexical.",
   "keywords": [
     "lexical",

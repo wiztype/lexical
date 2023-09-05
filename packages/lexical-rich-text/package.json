@@ -1,5 +1,5 @@
 {
-  "name": "@lexical/rich-text",
+  "name": "@wiztype/rich-text",
   "description": "This package contains rich text helpers for Lexical.",
   "keywords": [
     "lexical",

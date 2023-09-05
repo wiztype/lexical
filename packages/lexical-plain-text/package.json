@@ -1,5 +1,5 @@
 {
-  "name": "@lexical/plain-text",
+  "name": "@wiztype/plain-text",
   "description": "This package contains plain text helpers for Lexical.",
   "keywords": [
     "lexical",

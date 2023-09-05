@@ -1,5 +1,5 @@
 {
-  "name": "@lexical/offset",
+  "name": "@wiztype/offset",
   "description": "This package contains selection offset helpers for Lexical.",
   "keywords": [
     "lexical",
